@@ -3,11 +3,12 @@
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { Header } from "@/components/dashboard/header"
 import { KpiCards } from "@/components/dashboard/kpi-cards"
-import { PropertyCards } from "@/components/dashboard/property-cards"
-import { ClientRequests } from "@/components/dashboard/client-requests"
-import { AgentNetwork } from "@/components/dashboard/agent-network"
+import { UpcomingPayments } from "@/components/dashboard/upcoming-payments"
+import { OverduePayments } from "@/components/dashboard/overdue-payments"
+import { BelowMarketRentals } from "@/components/dashboard/below-market-rentals"
+import { EmlakSorWidget } from "@/components/dashboard/emlak-sor-widget"
+import { QuickStats } from "@/components/dashboard/quick-stats"
 import { MobileNav } from "@/components/dashboard/mobile-nav"
-import { ActivityFeed } from "@/components/dashboard/activity-feed"
 
 export default function DashboardPage() {
   return (
@@ -16,48 +17,57 @@ export default function DashboardPage() {
       <Sidebar />
 
       {/* Main content area */}
-      <div className="flex-1 flex flex-col min-h-screen lg:ml-0">
+      <div className="flex-1 flex flex-col min-h-screen">
         <Header />
 
         {/* Page content */}
-        <main className="flex-1 px-4 py-6 lg:px-8 lg:py-8 pb-24 lg:pb-8 overflow-auto">
+        <main className="flex-1 px-4 py-5 lg:px-6 xl:px-8 lg:py-6 pb-24 lg:pb-8 overflow-auto">
           {/* Page header */}
-          <div className="mb-8">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="mb-6 lg:mb-8">
+            <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
               <div>
-                <h1 className="text-2xl lg:text-3xl font-semibold tracking-tight text-foreground">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
                   Kontrol Paneli
-                </h1>
-                <p className="text-muted-foreground mt-1">
-                  Hoş geldiniz, Ahmet. Gayrimenkullerinizde neler olup bittiğine dair bir özet.
                 </p>
+                <h1 className="text-xl lg:text-2xl font-bold tracking-tight text-foreground">
+                  Hoş geldiniz, Ahmet
+                </h1>
               </div>
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 bg-accent rounded-full animate-pulse" />
-                  Canlı güncellemeler
+              <div className="flex items-center gap-3">
+                <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <span className="w-1.5 h-1.5 bg-accent rounded-full animate-pulse" />
+                  Son güncelleme: 2 dk önce
                 </span>
               </div>
             </div>
           </div>
 
           {/* KPI Cards */}
-          <section className="mb-8">
+          <section className="mb-6 lg:mb-8">
             <KpiCards />
           </section>
 
-          {/* Main grid */}
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 lg:gap-8">
-            {/* Left column - 2/3 width on XL */}
-            <div className="xl:col-span-2 space-y-6 lg:space-y-8">
-              <PropertyCards />
-              <ClientRequests />
+          {/* Main content grid */}
+          <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 lg:gap-6">
+            {/* Left column - Primary content (8 cols) */}
+            <div className="xl:col-span-8 space-y-5 lg:space-y-6">
+              {/* Overdue payments - Most important, shown first */}
+              <OverduePayments />
+              
+              {/* Upcoming payments */}
+              <UpcomingPayments />
+              
+              {/* Below market rentals */}
+              <BelowMarketRentals />
             </div>
 
-            {/* Right column - 1/3 width on XL */}
-            <div className="space-y-6 lg:space-y-8">
-              <AgentNetwork />
-              <ActivityFeed />
+            {/* Right column - Secondary content (4 cols) */}
+            <div className="xl:col-span-4 space-y-5 lg:space-y-6">
+              {/* Quick stats */}
+              <QuickStats />
+              
+              {/* Emlak Sor - Secondary feature but visible */}
+              <EmlakSorWidget />
             </div>
           </div>
         </main>

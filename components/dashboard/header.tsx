@@ -23,11 +23,11 @@ export function Header({ onMenuClick }: HeaderProps) {
         </Button>
         
         {/* Search */}
-        <div className="hidden sm:flex items-center gap-2 px-4 py-2 bg-secondary/50 rounded-xl w-64 lg:w-80 transition-all focus-within:ring-2 focus-within:ring-primary/20 focus-within:bg-secondary">
+        <div className="hidden sm:flex items-center gap-2 px-4 py-2.5 bg-secondary/60 rounded-xl w-64 lg:w-96 transition-all focus-within:ring-2 focus-within:ring-primary/20 focus-within:bg-card focus-within:shadow-sm">
           <Search className="w-4 h-4 text-muted-foreground" />
           <input
             type="text"
-            placeholder="Gayrimenkuller, müşteriler ara..."
+            placeholder="Kiracı, daire veya mahalle ara..."
             className="flex-1 text-sm bg-transparent border-none outline-none placeholder:text-muted-foreground"
           />
           <kbd className="hidden lg:inline-flex items-center px-2 py-0.5 text-xs font-medium text-muted-foreground bg-background rounded-md border border-border">
@@ -60,9 +60,9 @@ export function Header({ onMenuClick }: HeaderProps) {
 
         <div className="w-px h-6 mx-2 bg-border hidden sm:block" />
 
-        <Button className="hidden sm:flex items-center gap-2 h-9 px-4 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl shadow-sm">
+        <Button className="hidden sm:flex items-center gap-2 h-10 px-5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl shadow-sm shadow-primary/20">
           <Plus className="w-4 h-4" />
-          <span className="text-sm font-medium">Gayrimenkul Ekle</span>
+          <span className="text-sm font-medium">Yeni Kiralık Ekle</span>
         </Button>
 
         <Avatar className="w-9 h-9 ml-2 ring-2 ring-border">

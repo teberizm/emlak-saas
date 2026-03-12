@@ -5,11 +5,12 @@ import {
   LayoutDashboard,
   Building2,
   Users,
-  MessageSquare,
-  Network,
+  CreditCard,
   TrendingUp,
-  MessagesSquare,
-  Receipt,
+  HelpCircle,
+  ClipboardList,
+  Bell,
+  FileText,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -17,15 +18,19 @@ import {
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 
-const navItems = [
+const mainNavItems = [
   { icon: LayoutDashboard, label: "Kontrol Paneli", href: "/", active: true },
-  { icon: Building2, label: "Gayrimenkuller", href: "/properties" },
+  { icon: Building2, label: "Kiralık Takibi", href: "/rentals", badge: 24 },
+  { icon: CreditCard, label: "Ödemeler", href: "/payments", badge: 5 },
   { icon: Users, label: "Müşteriler", href: "/clients" },
-  { icon: MessageSquare, label: "Istekler", href: "/requests" },
-  { icon: Network, label: "Acentalar Ağı", href: "/agents" },
-  { icon: TrendingUp, label: "Pazar Analizi", href: "/market" },
-  { icon: MessagesSquare, label: "Mesajlar", href: "/messages", badge: 3 },
-  { icon: Receipt, label: "İşlemler", href: "/transactions" },
+  { icon: TrendingUp, label: "Piyasa Analizi", href: "/market" },
+]
+
+const secondaryNavItems = [
+  { icon: HelpCircle, label: "Emlak Sor", href: "/emlak-sor" },
+  { icon: ClipboardList, label: "Taleplerim", href: "/requests" },
+  { icon: Bell, label: "Bildirimler", href: "/notifications", badge: 3 },
+  { icon: FileText, label: "Raporlar", href: "/reports" },
   { icon: Settings, label: "Ayarlar", href: "/settings" },
 ]
 
@@ -62,30 +67,73 @@ export function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 py-6 px-3 space-y-1 overflow-y-auto">
-        {navItems.map((item) => (
-          <a
-            key={item.label}
-            href={item.href}
-            className={cn(
-              "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200",
-              item.active
-                ? "bg-sidebar-accent text-sidebar-primary"
-                : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground",
-              collapsed && "justify-center px-2"
-            )}
-          >
-            <item.icon className={cn("w-5 h-5 flex-shrink-0", item.active && "text-primary")} />
-            {!collapsed && (
-              <span className="flex-1">{item.label}</span>
-            )}
-            {!collapsed && item.badge && (
-              <span className="flex items-center justify-center w-5 h-5 text-xs font-semibold text-primary-foreground bg-primary rounded-full">
-                {item.badge}
-              </span>
-            )}
-          </a>
-        ))}
+      <nav className="flex-1 py-4 px-3 overflow-y-auto">
+        {/* Main Navigation */}
+        <div className="space-y-1">
+          {!collapsed && (
+            <p className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Ana Menü
+            </p>
+          )}
+          {mainNavItems.map((item) => (
+            <a
+              key={item.label}
+              href={item.href}
+              className={cn(
+                "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200",
+                item.active
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground",
+                collapsed && "justify-center px-2"
+              )}
+            >
+              <item.icon className="w-5 h-5 flex-shrink-0" />
+              {!collapsed && (
+                <span className="flex-1">{item.label}</span>
+              )}
+              {!collapsed && item.badge && (
+                <span className={cn(
+                  "flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[10px] font-semibold rounded-full",
+                  item.active 
+                    ? "bg-primary-foreground/20 text-primary-foreground" 
+                    : "bg-primary/10 text-primary"
+                )}>
+                  {item.badge}
+                </span>
+              )}
+            </a>
+          ))}
+        </div>
+
+        {/* Secondary Navigation */}
+        <div className="mt-6 space-y-1">
+          {!collapsed && (
+            <p className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Diğer
+            </p>
+          )}
+          {secondaryNavItems.map((item) => (
+            <a
+              key={item.label}
+              href={item.href}
+              className={cn(
+                "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200",
+                "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground",
+                collapsed && "justify-center px-2"
+              )}
+            >
+              <item.icon className="w-5 h-5 flex-shrink-0" />
+              {!collapsed && (
+                <span className="flex-1">{item.label}</span>
+              )}
+              {!collapsed && item.badge && (
+                <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[10px] font-semibold bg-destructive/10 text-destructive rounded-full">
+                  {item.badge}
+                </span>
+              )}
+            </a>
+          ))}
+        </div>
       </nav>
 
       {/* Collapse toggle for collapsed state */}

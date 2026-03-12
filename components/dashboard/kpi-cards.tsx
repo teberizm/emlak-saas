@@ -1,122 +1,118 @@
 "use client"
 
-import { Card, CardContent } from "@/components/ui/card"
-import { Building2, Users, TrendingUp, ArrowUpRight, ArrowDownRight, Network } from "lucide-react"
+import { Card } from "@/components/ui/card"
+import { Building2, Wallet, AlertCircle, CalendarClock } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const kpiData = [
   {
-    title: "Aktif Gayrimenkuller",
-    value: "128",
-    change: "+12%",
+    title: "Takip Edilen Kiralıklar",
+    value: "24",
+    change: "+3",
+    changeLabel: "bu ay eklenen",
     trend: "up",
     icon: Building2,
-    description: "geçen aya göre",
-    sparkline: [30, 45, 35, 50, 65, 55, 70, 85],
+    color: "primary",
   },
   {
-    title: "Aktif Müşteriler",
-    value: "2.847",
-    change: "+8.2%",
+    title: "Bu Ay Tahsil Edilen",
+    value: "₺187.500",
+    change: "₺12.500",
+    changeLabel: "kalan tahsilat",
     trend: "up",
-    icon: Users,
-    description: "geçen aya göre",
-    sparkline: [40, 35, 45, 55, 50, 60, 70, 75],
+    icon: Wallet,
+    color: "accent",
   },
   {
-    title: "Aylık Anlaşmalar",
-    value: "₺4.2M",
-    change: "+23.5%",
-    trend: "up",
-    icon: TrendingUp,
-    description: "geçen aya göre",
-    sparkline: [20, 35, 30, 45, 55, 65, 80, 95],
-  },
-  {
-    title: "Ağ İstekleri",
-    value: "342",
-    change: "-4.1%",
+    title: "Geciken Ödemeler",
+    value: "5",
+    change: "₺32.000",
+    changeLabel: "toplam geciken",
     trend: "down",
-    icon: Network,
-    description: "geçen aya göre",
-    sparkline: [60, 55, 65, 50, 45, 40, 35, 38],
+    icon: AlertCircle,
+    color: "destructive",
+  },
+  {
+    title: "Yaklaşan Ödemeler",
+    value: "8",
+    change: "7 gün içinde",
+    changeLabel: "tahsilat bekleniyor",
+    trend: "neutral",
+    icon: CalendarClock,
+    color: "chart-4",
   },
 ]
 
-function Sparkline({ data, trend }: { data: number[]; trend: string }) {
-  const max = Math.max(...data)
-  const min = Math.min(...data)
-  const range = max - min
-  const width = 80
-  const height = 32
-  const padding = 2
-  
-  const points = data.map((value, index) => {
-    const x = padding + (index / (data.length - 1)) * (width - padding * 2)
-    const y = height - padding - ((value - min) / range) * (height - padding * 2)
-    return `${x},${y}`
-  }).join(" ")
-
-  return (
-    <svg width={width} height={height} className="overflow-visible">
-      <polyline
-        points={points}
-        fill="none"
-        stroke={trend === "up" ? "oklch(0.65 0.17 160)" : "oklch(0.55 0.22 25)"}
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="drop-shadow-sm"
-      />
-    </svg>
-  )
+const colorClasses = {
+  primary: {
+    bg: "bg-primary/10",
+    text: "text-primary",
+    icon: "text-primary",
+  },
+  accent: {
+    bg: "bg-accent/10",
+    text: "text-accent",
+    icon: "text-accent",
+  },
+  destructive: {
+    bg: "bg-destructive/10",
+    text: "text-destructive",
+    icon: "text-destructive",
+  },
+  "chart-4": {
+    bg: "bg-chart-4/10",
+    text: "text-chart-4",
+    icon: "text-chart-4",
+  },
 }
 
 export function KpiCards() {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 lg:gap-6">
-      {kpiData.map((kpi) => (
-        <Card 
-          key={kpi.title}
-          className="group relative overflow-hidden border-border/50 shadow-sm hover:shadow-md transition-all duration-300 hover:border-border"
-        >
-          <CardContent className="p-5 lg:p-6">
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex items-center justify-center w-11 h-11 rounded-xl bg-primary/5 group-hover:bg-primary/10 transition-colors">
-                <kpi.icon className="w-5 h-5 text-primary" />
-              </div>
-              <Sparkline data={kpi.sparkline} trend={kpi.trend} />
-            </div>
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-5">
+      {kpiData.map((kpi) => {
+        const colors = colorClasses[kpi.color as keyof typeof colorClasses]
+        return (
+          <Card
+            key={kpi.title}
+            className="relative overflow-hidden p-4 lg:p-5 bg-card border-border/50 hover:border-border hover:shadow-md transition-all duration-300 group"
+          >
+            {/* Background decoration */}
+            <div className={cn(
+              "absolute -top-8 -right-8 w-24 h-24 rounded-full opacity-40 blur-2xl transition-opacity group-hover:opacity-60",
+              colors.bg
+            )} />
             
-            <div className="space-y-1">
-              <p className="text-sm font-medium text-muted-foreground">
+            {/* Icon */}
+            <div className={cn(
+              "flex items-center justify-center w-10 h-10 lg:w-11 lg:h-11 rounded-xl mb-3 lg:mb-4",
+              colors.bg
+            )}>
+              <kpi.icon className={cn("w-5 h-5", colors.icon)} />
+            </div>
+
+            {/* Content */}
+            <div className="relative">
+              <p className="text-[10px] lg:text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
                 {kpi.title}
               </p>
-              <div className="flex items-baseline gap-3">
-                <span className="text-2xl lg:text-3xl font-semibold tracking-tight text-foreground">
-                  {kpi.value}
-                </span>
-                <span
-                  className={cn(
-                    "inline-flex items-center gap-0.5 px-2 py-0.5 text-xs font-medium rounded-full",
-                    kpi.trend === "up"
-                      ? "bg-accent/10 text-accent"
-                      : "bg-destructive/10 text-destructive"
-                  )}
-                >
-                  {kpi.trend === "up" ? (
-                    <ArrowUpRight className="w-3 h-3" />
-                  ) : (
-                    <ArrowDownRight className="w-3 h-3" />
-                  )}
+              <p className="text-xl lg:text-2xl xl:text-3xl font-bold tracking-tight text-foreground">
+                {kpi.value}
+              </p>
+              <div className="flex flex-col lg:flex-row lg:items-center gap-0.5 lg:gap-1.5 mt-2">
+                <span className={cn(
+                  "text-xs lg:text-sm font-semibold",
+                  kpi.trend === "down" ? "text-destructive" : colors.text
+                )}>
                   {kpi.change}
                 </span>
+                <span className="text-[10px] lg:text-xs text-muted-foreground">
+                  {kpi.changeLabel}
+                </span>
               </div>
-              <p className="text-xs text-muted-foreground">{kpi.description}</p>
             </div>
-          </CardContent>
-        </Card>
-      ))}
+          </Card>
+        )
+      })}
     </div>
   )
 }

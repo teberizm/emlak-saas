@@ -7,8 +7,8 @@ const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'EmlakNet - Real Estate Agent Network',
-  description: 'Premium real estate agent network and property management platform',
+  title: 'EmlakNet - Kiralık Emlak Takip Sistemi',
+  description: 'Emlakçılar için profesyonel kiralık takip, ödeme yönetimi ve piyasa analizi platformu',
   generator: 'v0.app',
   icons: {
     icon: [
@@ -35,7 +35,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en">
+    <html lang="tr">
       <body className="font-sans antialiased">
         {children}
         <Analytics />

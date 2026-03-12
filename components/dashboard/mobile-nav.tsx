@@ -1,43 +1,53 @@
 "use client"
 
 import { cn } from "@/lib/utils"
-import { LayoutDashboard, Building2, MessageSquare, Network, MessagesSquare } from "lucide-react"
+import { LayoutDashboard, Building2, CreditCard, HelpCircle, User } from "lucide-react"
 
 const navItems = [
-  { icon: LayoutDashboard, label: "Kontrol Paneli", href: "/", active: true },
-  { icon: Building2, label: "Gayrimenkuller", href: "/properties" },
-  { icon: MessageSquare, label: "İstekler", href: "/requests" },
-  { icon: Network, label: "Ağ", href: "/agents" },
-  { icon: MessagesSquare, label: "Mesajlar", href: "/messages", badge: 3 },
+  { icon: LayoutDashboard, label: "Panel", href: "/", active: true },
+  { icon: Building2, label: "Kiralıklar", href: "/rentals" },
+  { icon: CreditCard, label: "Ödemeler", href: "/payments", badge: 5, urgent: true },
+  { icon: HelpCircle, label: "Sor", href: "/emlak-sor" },
+  { icon: User, label: "Profil", href: "/profile" },
 ]
 
 export function MobileNav() {
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 lg:hidden bg-background/95 backdrop-blur-xl border-t border-border">
-      <div className="flex items-center justify-around px-2 py-2 safe-area-inset-bottom">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 lg:hidden bg-card/98 backdrop-blur-xl border-t border-border shadow-[0_-4px_20px_-4px_rgba(0,0,0,0.05)]">
+      <div className="flex items-center justify-around px-1 py-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))]">
         {navItems.map((item) => (
           <a
             key={item.label}
             href={item.href}
             className={cn(
-              "relative flex flex-col items-center gap-1 px-3 py-2 rounded-xl transition-all duration-200",
+              "relative flex flex-col items-center gap-0.5 min-w-[60px] px-2 py-2 rounded-xl transition-all duration-200",
               item.active
-                ? "text-primary"
-                : "text-muted-foreground hover:text-foreground"
+                ? "bg-primary/10"
+                : "active:bg-muted"
             )}
           >
             <div className="relative">
-              <item.icon className="w-5 h-5" />
+              <item.icon className={cn(
+                "w-5 h-5 transition-colors",
+                item.active ? "text-primary" : "text-muted-foreground"
+              )} />
               {item.badge && (
-                <span className="absolute -top-1.5 -right-1.5 flex items-center justify-center w-4 h-4 text-[10px] font-semibold text-primary-foreground bg-primary rounded-full">
+                <span className={cn(
+                  "absolute -top-1.5 -right-2.5 flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-bold rounded-full",
+                  item.urgent 
+                    ? "bg-destructive text-white" 
+                    : "bg-primary text-primary-foreground"
+                )}>
                   {item.badge}
                 </span>
               )}
             </div>
-            <span className="text-[10px] font-medium">{item.label}</span>
-            {item.active && (
-              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-6 h-0.5 bg-primary rounded-full" />
-            )}
+            <span className={cn(
+              "text-[10px] font-medium transition-colors",
+              item.active ? "text-primary" : "text-muted-foreground"
+            )}>
+              {item.label}
+            </span>
           </a>
         ))}
       </div>
