@@ -12,8 +12,8 @@ const requests = [
     clientName: "Mehmet Yılmaz",
     budget: "₺3-5M",
     location: "Kadıköy",
-    propertyType: "Apartment",
-    status: "New",
+    propertyType: "Daire",
+    status: "Yeni",
     initials: "MY",
   },
   {
@@ -22,7 +22,7 @@ const requests = [
     budget: "₺6-8M",
     location: "Beşiktaş",
     propertyType: "Villa",
-    status: "Matching",
+    status: "Eşleşti",
     initials: "AD",
   },
   {
@@ -30,8 +30,8 @@ const requests = [
     clientName: "Can Öztürk",
     budget: "₺2-3M",
     location: "Ataşehir",
-    propertyType: "Apartment",
-    status: "Shared",
+    propertyType: "Daire",
+    status: "Paylaşıldı",
     initials: "CÖ",
   },
   {
@@ -40,16 +40,16 @@ const requests = [
     budget: "₺10-15M",
     location: "Sarıyer",
     propertyType: "Villa",
-    status: "New",
+    status: "Yeni",
     initials: "ZK",
   },
 ]
 
 const statusConfig = {
-  New: { label: "New", className: "bg-primary/10 text-primary border-primary/20" },
-  Matching: { label: "Matching", className: "bg-accent/10 text-accent border-accent/20" },
-  Shared: { label: "Network", className: "bg-chart-3/10 text-chart-3 border-chart-3/20" },
-  Closed: { label: "Closed", className: "bg-muted text-muted-foreground border-border" },
+  Yeni: { label: "Yeni", className: "bg-primary/10 text-primary border-primary/20" },
+  Eşleşti: { label: "Eşleşti", className: "bg-accent/10 text-accent border-accent/20" },
+  Paylaşıldı: { label: "Ağ", className: "bg-chart-3/10 text-chart-3 border-chart-3/20" },
+  Kapalı: { label: "Kapalı", className: "bg-muted text-muted-foreground border-border" },
 }
 
 export function ClientRequests() {
@@ -58,11 +58,11 @@ export function ClientRequests() {
       <CardHeader className="pb-4">
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle className="text-lg font-semibold">Client Requests</CardTitle>
-            <p className="text-sm text-muted-foreground mt-1">Active property inquiries</p>
+            <CardTitle className="text-lg font-semibold">Müşteri İstekleri</CardTitle>
+            <p className="text-sm text-muted-foreground mt-1">Aktif gayrimenkul sorguları</p>
           </div>
           <Button variant="ghost" size="sm" className="text-primary hover:text-primary hover:bg-primary/5">
-            View board
+            Panoyu gör
             <ArrowRight className="w-4 h-4 ml-1" />
           </Button>
         </div>

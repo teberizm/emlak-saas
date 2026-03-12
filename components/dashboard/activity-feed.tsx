@@ -8,41 +8,41 @@ const activities = [
   {
     id: 1,
     type: "property",
-    title: "New property listed",
-    description: "Villa in Sarıyer added to your portfolio",
-    time: "2 min ago",
+    title: "Yeni gayrimenkul listelendi",
+    description: "Sarıyer'de villa portföyünüze eklendi",
+    time: "2 dakika önce",
     icon: Building2,
   },
   {
     id: 2,
     type: "client",
-    title: "Client matched",
-    description: "Mehmet Y. matched with 3 properties",
-    time: "15 min ago",
+    title: "Müşteri eşleştirildi",
+    description: "Mehmet Y. 3 gayrimenkulle eşleştirildi",
+    time: "15 dakika önce",
     icon: Users,
   },
   {
     id: 3,
     type: "share",
-    title: "Property shared",
-    description: "Elif Ç. shared a property with you",
-    time: "1 hour ago",
+    title: "Gayrimenkul paylaşıldı",
+    description: "Elif Ç. sizinle bir gayrimenkul paylaştı",
+    time: "1 saat önce",
     icon: Share2,
   },
   {
     id: 4,
     type: "deal",
-    title: "Deal completed",
-    description: "Commission received: ₺42,500",
-    time: "3 hours ago",
+    title: "Anlaşma tamamlandı",
+    description: "Alınan komisyon: ₺42.500",
+    time: "3 saat önce",
     icon: Check,
   },
   {
     id: 5,
     type: "message",
-    title: "New message",
-    description: "Burak A. sent you a message",
-    time: "5 hours ago",
+    title: "Yeni mesaj",
+    description: "Burak A. size bir mesaj gönderdi",
+    time: "5 saat önce",
     icon: MessageCircle,
   },
 ]
@@ -59,7 +59,7 @@ export function ActivityFeed() {
   return (
     <Card className="border-border/50 shadow-sm">
       <CardHeader className="pb-4">
-        <CardTitle className="text-lg font-semibold">Recent Activity</CardTitle>
+        <CardTitle className="text-lg font-semibold">Son Aktiviteler</CardTitle>
       </CardHeader>
       <CardContent className="pt-0">
         <div className="relative space-y-4">

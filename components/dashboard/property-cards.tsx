@@ -10,45 +10,45 @@ const properties = [
   {
     id: 1,
     image: "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=400&h=300&fit=crop",
-    location: "Beşiktaş, Istanbul",
-    price: "₺4,250,000",
+    location: "Beşiktaş, İstanbul",
+    price: "₺4.250.000",
     size: "185 m²",
-    status: "Active",
-    type: "Apartment",
+    status: "Aktif",
+    type: "Daire",
   },
   {
     id: 2,
     image: "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=400&h=300&fit=crop",
-    location: "Kadıköy, Istanbul",
-    price: "₺8,900,000",
+    location: "Kadıköy, İstanbul",
+    price: "₺8.900.000",
     size: "320 m²",
-    status: "Pending",
+    status: "Beklemede",
     type: "Villa",
   },
   {
     id: 3,
     image: "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=400&h=300&fit=crop",
-    location: "Ataşehir, Istanbul",
-    price: "₺3,150,000",
+    location: "Ataşehir, İstanbul",
+    price: "₺3.150.000",
     size: "145 m²",
-    status: "Active",
-    type: "Apartment",
+    status: "Aktif",
+    type: "Daire",
   },
   {
     id: 4,
     image: "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=400&h=300&fit=crop",
     location: "Çankaya, Ankara",
-    price: "₺5,750,000",
+    price: "₺5.750.000",
     size: "210 m²",
-    status: "Sold",
-    type: "Apartment",
+    status: "Satıldı",
+    type: "Daire",
   },
 ]
 
 const statusStyles = {
-  Active: "bg-accent/10 text-accent border-accent/20",
-  Pending: "bg-chart-4/10 text-chart-4 border-chart-4/20",
-  Sold: "bg-muted text-muted-foreground border-border",
+  Aktif: "bg-accent/10 text-accent border-accent/20",
+  Beklemede: "bg-chart-4/10 text-chart-4 border-chart-4/20",
+  Satıldı: "bg-muted text-muted-foreground border-border",
 }
 
 export function PropertyCards() {
@@ -57,11 +57,11 @@ export function PropertyCards() {
       <CardHeader className="pb-4">
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle className="text-lg font-semibold">Recent Properties</CardTitle>
-            <p className="text-sm text-muted-foreground mt-1">Manage your property listings</p>
+            <CardTitle className="text-lg font-semibold">Son Gayrimenkuller</CardTitle>
+            <p className="text-sm text-muted-foreground mt-1">Gayrimenkul ilanlarınızı yönetin</p>
           </div>
           <Button variant="ghost" size="sm" className="text-primary hover:text-primary hover:bg-primary/5">
-            View all
+            Tümünü gör
             <ArrowRight className="w-4 h-4 ml-1" />
           </Button>
         </div>

@@ -8,8 +8,8 @@ const agents = [
   {
     id: 1,
     name: "Elif Çelik",
-    agency: "Prime Real Estate",
-    location: "Istanbul",
+    agency: "Prime Gayrimenkul",
+    location: "İstanbul",
     trustScore: 98,
     deals: 47,
     initials: "EÇ",
@@ -18,8 +18,8 @@ const agents = [
   {
     id: 2,
     name: "Burak Aksoy",
-    agency: "Horizon Properties",
-    location: "Istanbul",
+    agency: "Horizon Gayrimenkul",
+    location: "İstanbul",
     trustScore: 94,
     deals: 32,
     initials: "BA",
@@ -79,11 +79,11 @@ export function AgentNetwork() {
       <CardHeader className="pb-4">
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle className="text-lg font-semibold">Agent Network</CardTitle>
-            <p className="text-sm text-muted-foreground mt-1">Top performing partners</p>
+            <CardTitle className="text-lg font-semibold">Acentalar Ağı</CardTitle>
+            <p className="text-sm text-muted-foreground mt-1">En iyi performans gösteren ortaklar</p>
           </div>
           <Button variant="ghost" size="sm" className="text-primary hover:text-primary hover:bg-primary/5">
-            View all
+            Tümünü gör
             <ArrowRight className="w-4 h-4 ml-1" />
           </Button>
         </div>
@@ -127,11 +127,11 @@ export function AgentNetwork() {
               <div className="flex flex-col gap-1.5">
                 <Button variant="outline" size="sm" className="h-8 px-3 text-xs">
                   <MessageCircle className="w-3 h-3 mr-1.5" />
-                  Message
+                  Mesaj
                 </Button>
                 <Button variant="ghost" size="sm" className="h-8 px-3 text-xs text-muted-foreground">
                   <Share className="w-3 h-3 mr-1.5" />
-                  Share
+                  Paylaş
                 </Button>
               </div>
             </div>

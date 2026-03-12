@@ -4,11 +4,11 @@ import { cn } from "@/lib/utils"
 import { LayoutDashboard, Building2, MessageSquare, Network, MessagesSquare } from "lucide-react"
 
 const navItems = [
-  { icon: LayoutDashboard, label: "Dashboard", href: "#", active: true },
-  { icon: Building2, label: "Properties", href: "#" },
-  { icon: MessageSquare, label: "Requests", href: "#" },
-  { icon: Network, label: "Network", href: "#" },
-  { icon: MessagesSquare, label: "Messages", href: "#", badge: 3 },
+  { icon: LayoutDashboard, label: "Kontrol Paneli", href: "/", active: true },
+  { icon: Building2, label: "Gayrimenkuller", href: "/properties" },
+  { icon: MessageSquare, label: "İstekler", href: "/requests" },
+  { icon: Network, label: "Ağ", href: "/agents" },
+  { icon: MessagesSquare, label: "Mesajlar", href: "/messages", badge: 3 },
 ]
 
 export function MobileNav() {

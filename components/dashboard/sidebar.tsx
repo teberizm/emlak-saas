@@ -18,15 +18,15 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 
 const navItems = [
-  { icon: LayoutDashboard, label: "Dashboard", href: "#", active: true },
-  { icon: Building2, label: "Properties", href: "#" },
-  { icon: Users, label: "Clients", href: "#" },
-  { icon: MessageSquare, label: "Requests", href: "#" },
-  { icon: Network, label: "Agent Network", href: "#" },
-  { icon: TrendingUp, label: "Market Analysis", href: "#" },
-  { icon: MessagesSquare, label: "Messages", href: "#", badge: 3 },
-  { icon: Receipt, label: "Transactions", href: "#" },
-  { icon: Settings, label: "Settings", href: "#" },
+  { icon: LayoutDashboard, label: "Kontrol Paneli", href: "/", active: true },
+  { icon: Building2, label: "Gayrimenkuller", href: "/properties" },
+  { icon: Users, label: "Müşteriler", href: "/clients" },
+  { icon: MessageSquare, label: "Istekler", href: "/requests" },
+  { icon: Network, label: "Acentalar Ağı", href: "/agents" },
+  { icon: TrendingUp, label: "Pazar Analizi", href: "/market" },
+  { icon: MessagesSquare, label: "Mesajlar", href: "/messages", badge: 3 },
+  { icon: Receipt, label: "İşlemler", href: "/transactions" },
+  { icon: Settings, label: "Ayarlar", href: "/settings" },
 ]
 
 export function Sidebar() {
@@ -111,7 +111,7 @@ export function Sidebar() {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-sidebar-foreground truncate">Ahmet Kaya</p>
-              <p className="text-xs text-muted-foreground truncate">Premium Agent</p>
+              <p className="text-xs text-muted-foreground truncate">Premium Ajan</p>
             </div>
           </div>
         </div>

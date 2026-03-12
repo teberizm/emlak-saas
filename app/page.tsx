@@ -26,16 +26,16 @@ export default function DashboardPage() {
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div>
                 <h1 className="text-2xl lg:text-3xl font-semibold tracking-tight text-foreground">
-                  Dashboard
+                  Kontrol Paneli
                 </h1>
                 <p className="text-muted-foreground mt-1">
-                  Welcome back, Ahmet. Here's what's happening with your properties.
+                  Hoş geldiniz, Ahmet. Gayrimenkullerinizde neler olup bittiğine dair bir özet.
                 </p>
               </div>
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <span className="flex items-center gap-1.5">
                   <span className="w-2 h-2 bg-accent rounded-full animate-pulse" />
-                  Live updates
+                  Canlı güncellemeler
                 </span>
               </div>
             </div>

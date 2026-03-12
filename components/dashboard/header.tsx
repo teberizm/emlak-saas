@@ -27,7 +27,7 @@ export function Header({ onMenuClick }: HeaderProps) {
           <Search className="w-4 h-4 text-muted-foreground" />
           <input
             type="text"
-            placeholder="Search properties, clients..."
+            placeholder="Gayrimenkuller, müşteriler ara..."
             className="flex-1 text-sm bg-transparent border-none outline-none placeholder:text-muted-foreground"
           />
           <kbd className="hidden lg:inline-flex items-center px-2 py-0.5 text-xs font-medium text-muted-foreground bg-background rounded-md border border-border">
@@ -62,7 +62,7 @@ export function Header({ onMenuClick }: HeaderProps) {
 
         <Button className="hidden sm:flex items-center gap-2 h-9 px-4 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl shadow-sm">
           <Plus className="w-4 h-4" />
-          <span className="text-sm font-medium">Add Property</span>
+          <span className="text-sm font-medium">Gayrimenkul Ekle</span>
         </Button>
 
         <Avatar className="w-9 h-9 ml-2 ring-2 ring-border">
