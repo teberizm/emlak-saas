@@ -1,0 +1,628 @@
+You are working on an existing project repository for a SaaS product called EmlakNet.
+IMPORTANT:
+- First inspect the current repository structure carefully.
+- Do not rewrite everything blindly.
+- Reuse existing UI/components/pages where possible.
+- Keep the project stable and production-oriented.
+- Complete the work in 10 clear steps.
+- After finishing each step, briefly summarize what was done in code comments or progress
+notes.
+- If something already exists in the repository, improve or integrate it instead of duplicating it.
+- Keep code modular, typed, and maintainable.
+- Do not leave half-finished placeholders.
+- Build for real usage, not a demo toy app.
+==================================================
+PROJECT DEFINITION
+==================================================
+EmlakNet is a real estate SaaS platform for real estate agents in Turkey.
+MAIN VALUE PROPOSITION:
+1. Track managed rental properties
+2. Track rent payments
+3. Send automatic payment reminders via SMS / WhatsApp
+4. Compare current rent with neighborhood market rent averages
+5. Let agents ask other agents for rental/sale properties when they do not have one for a
+client (“Emlak Sor”)
+IMPORTANT PRODUCT PRIORITY:
+- Core product = rental property tracking + payment management
+- Secondary growth feature = Emlak Sor network
+- This is NOT a listing marketplace like Sahibinden
+- This is NOT a public consumer site
+- This is an internal operational SaaS for real estate agents
+==================================================
+TECH STACK TARGET
+==================================================
+Use and improve the existing repo stack if already present.
+If stack is incomplete, prefer:
+Frontend:
+- Next.js (App Router preferred if suitable in current repo)
+- TypeScript
+- Tailwind CSS
+- shadcn/ui
+
+Backend:
+- Next.js API routes OR separate backend already in repo
+- TypeScript
+- Prefer a clean service/repository architecture
+Database:
+- PostgreSQL
+- Prisma ORM preferred unless repo already uses another strong ORM
+Auth:
+- Secure auth compatible with current stack
+- Session or JWT, but production-safe
+- Password hashing with bcrypt/argon2
+Other:
+- Zod validation
+- React Hook Form for forms
+- Recharts for analytics
+- Day.js or date-fns for dates
+==================================================
+HIGH LEVEL GOAL
+==================================================
+Take the current repository and evolve it into a production-ready MVP by completing the
+missing backend/data architecture and finishing the missing frontend modules, especially:
+- robust database schema
+- rental tracking workflows
+- payments workflows
+- market comparison structure
+- Emlak Sor workflows
+- notifications
+- Reports page
+- Settings page
+==================================================
+STEP EXECUTION RULE
+==================================================
+Work in EXACTLY 10 steps.
+For each step:
+1. inspect existing code related to that step
+2. implement cleanly
+3. connect backend and frontend
+4. do not move to next step until current step is coherent
+
+At the end, provide:
+- list of files created/updated
+- environment variables needed
+- migration instructions
+- run/build instructions
+- deployment notes for VPS + emlak.tebova.com
+==================================================
+STEP 1 — REPOSITORY AUDIT AND ARCHITECTURE ALIGNMENT
+==================================================
+Inspect the repository and identify:
+- frontend structure
+- existing pages/components
+- existing API/backend structure
+- existing database layer
+- existing auth
+- design system/components already present
+- pages already done from v0
+- missing pages
+- broken or duplicate pieces
+Then align the project into a clean architecture without unnecessary rewrites.
+Desired folder structure concept (adapt to repo, not blindly):
+- app/
+- components/
+- features/
+- lib/
+- server/
+- prisma/
+- types/
+- hooks/
+Create or improve:
+- shared types
+- constants/enums
+- validation schemas
+- API response helpers
+- reusable table/card/filter components if missing
+==================================================
+STEP 2 — DESIGN A ROBUST DATABASE SCHEMA
+==================================================
+This is the most important step.
+Design a high-quality PostgreSQL schema for a real production MVP.
+
+Use Prisma schema if possible.
+Required entities:
+1. Agency
+- id
+- name
+- ownerName optional
+- city
+- district
+- phone optional
+- email optional
+- createdAt
+- updatedAt
+2. User
+- id
+- agencyId
+- fullName
+- email
+- phone
+- passwordHash
+- role (OWNER, ADMIN, AGENT, STAFF)
+- isActive
+- createdAt
+- updatedAt
+3. Tenant
+- id
+- agencyId
+- fullName
+- phone
+- email nullable
+- nationalId nullable
+- notes nullable
+- createdAt
+- updatedAt
+4. Property
+- id
+- agencyId
+- createdByUserId
+- title
+- listingType (RENTAL, SALE)
+- city
+- district
+- neighborhood
+
+- address nullable
+- buildingName nullable
+- roomCount (string like 1+1, 2+1, 3+1)
+- grossSquareMeters nullable
+- netSquareMeters nullable
+- floorNumber nullable
+- totalFloors nullable
+- buildingAge nullable
+- furnished boolean
+- heatingType nullable
+- status (ACTIVE, VACANT, ENDING_SOON, INACTIVE, ARCHIVED)
+- notes nullable
+- createdAt
+- updatedAt
+5. RentalContract
+- id
+- propertyId
+- tenantId
+- startDate
+- endDate nullable
+- currentRent
+- depositAmount nullable
+- paymentDay (1-31)
+- currency default TRY
+- autoIncreaseEnabled boolean default false
+- increasePolicy nullable
+- isActive boolean
+- notes nullable
+- createdAt
+- updatedAt
+6. PaymentSchedule
+- id
+- rentalContractId
+- dueDate
+- amount
+- status (PENDING, PAID, LATE, PARTIAL, CANCELLED)
+- paidAt nullable
+- lateDays default 0
+- reminderStatus nullable
+- reminderCount default 0
+- lastReminderAt nullable
+- createdAt
+- updatedAt
+7. PaymentTransaction
+- id
+
+- paymentScheduleId
+- amount
+- paymentMethod (CASH, BANK_TRANSFER, CREDIT_CARD, OTHER)
+- transactionDate
+- note nullable
+- createdByUserId
+- createdAt
+8. ReminderLog
+- id
+- paymentScheduleId
+- channel (SMS, WHATSAPP)
+- targetPhone
+- content
+- status (PENDING, SENT, FAILED)
+- providerResponse nullable
+- sentAt nullable
+- createdAt
+9. ClientLead
+- id
+- agencyId
+- createdByUserId
+- fullName
+- phone
+- interestedListingType (RENTAL, SALE)
+- preferredCity
+- preferredDistrict
+- preferredNeighborhood nullable
+- minBudget nullable
+- maxBudget nullable
+- preferredRoomCount nullable
+- preferredMinSquareMeters nullable
+- notes nullable
+- status (NEW, ACTIVE, CLOSED, LOST)
+- createdAt
+- updatedAt
+10. MarketRentSnapshot
+- id
+- city
+- district
+- neighborhood
+- listingType
+- roomCount nullable
+- avgRent
+- minRent nullable
+- maxRent nullable
+
+- sampleCount nullable
+- source nullable
+- capturedAt
+- createdAt
+11. AgentRequest (Emlak Sor)
+- id
+- agencyId
+- createdByUserId
+- requestType (RENTAL, SALE)
+- city
+- district
+- neighborhood
+- roomCount nullable
+- minSquareMeters nullable
+- maxSquareMeters nullable
+- minBudget nullable
+- maxBudget nullable
+- description nullable
+- status (OPEN, ANSWERED, CLOSED, EXPIRED)
+- expiresAt nullable
+- createdAt
+- updatedAt
+12. AgentRequestResponse
+- id
+- requestId
+- responderAgencyId
+- responderUserId
+- message
+- hasMatchingProperty boolean default false
+- sharedPhone nullable
+- sharedContactName nullable
+- status (VISIBLE, WITHDRAWN)
+- createdAt
+- updatedAt
+13. Notification
+- id
+- userId
+- type
+- title
+- message
+- link nullable
+- isRead default false
+- createdAt
+14. ReportCache optional if needed
+
+- id
+- reportType
+- agencyId
+- payload jsonb
+- rangeStart nullable
+- rangeEnd nullable
+- generatedAt
+15. Setting
+- id
+- agencyId
+- smsEnabled boolean
+- whatsappEnabled boolean
+- defaultReminderDaysBefore integer[] or equivalent structure
+- defaultReminderDaysAfter integer[] or equivalent
+- companyDisplayName nullable
+- companyLogoUrl nullable
+- timezone default Europe/Istanbul
+- currency default TRY
+- createdAt
+- updatedAt
+16. ActivityLog
+- id
+- agencyId
+- userId
+- action
+- entityType
+- entityId
+- metadata jsonb nullable
+- createdAt
+Requirements:
+- define relations correctly
+- add indexes for query-heavy fields
+- use sensible cascades/restrict rules
+- ensure agency-based multi-tenancy isolation
+- add enum definitions
+- create seed data for realistic demo
+Also:
+- implement migration files
+- ensure schema is clean and normalized
+- no poor shortcuts
+==================================================
+STEP 3 — AUTHENTICATION, AUTHORIZATION, MULTI-TENANCY
+==================================================
+
+Implement or improve auth.
+Requirements:
+- login
+- logout
+- session handling
+- agency-based access isolation
+- user roles
+- protected routes
+- secure password hashing
+- route guards / middleware
+Important:
+- every property, payment, customer, request, report must be scoped to the user’s agency
+- no cross-agency leakage
+Create demo login if needed for development.
+==================================================
+STEP 4 — RENTAL TRACKING MODULE
+==================================================
+Implement the full “Kiralık Takibi” module.
+Frontend page:
+- list rentals in a professional table/card hybrid
+- filters: city, district, neighborhood, status, room count, rent range
+- search by tenant/property title/neighborhood
+- add new rental
+- edit rental
+- property detail drawer or page
+- contract detail section
+- tenant section
+- notes section
+Required data shown:
+- title
+- location
+- room count
+- size
+- tenant
+- phone
+- monthly rent
+- payment day
+- status badge
+Actions:
+
+- view detail
+- edit
+- open tenant
+- open payment history
+- add internal note
+Backend:
+- CRUD endpoints/services
+- validation
+- pagination
+- filtering
+- sorting
+==================================================
+STEP 5 — PAYMENT TRACKING + REMINDER SYSTEM
+==================================================
+Implement the “Ödemeler” module as a first-class operational screen.
+Frontend:
+- tabs: Yaklaşan Ödemeler, Gecikenler, Tahsil Edilenler, Hatırlatmalar
+- professional table UI
+- bulk filters by date/status/neighborhood
+- action buttons:
+- SMS Gönder
+- WhatsApp Gönder
+- Tahsil edildi işaretle
+- Ödeme detayı
+Backend logic:
+- generate payment schedules monthly for active rental contracts
+- mark overdue payments automatically
+- calculate lateDays
+- support partial/full paid transactions
+- store reminder logs
+Build service functions for:
+- upcoming payments
+- late payments
+- mark payment as paid
+- send reminder abstraction (real integration can be mocked)
+- message templates
+Reminder settings:
+- 3 days before due date
+- due date
+- 3 days after due date
+but keep configurable from settings
+
+==================================================
+STEP 6 — DASHBOARD / CONTROL PANEL BUSINESS DATA
+==================================================
+Connect the dashboard to real backend data.
+Dashboard sections:
+1. KPI cards
+- Takip Edilen Kiralıklar
+- Bu Ay Tahsil Edilen Kira
+- Geciken Ödemeler
+- Yaklaşan Ödemeler
+2. Geciken Tahsilatlar
+- list late payments with phone actions
+3. Yaklaşan Ödemeler
+- due soon table/list
+4. Piyasa Altı Kiralıklar
+- compare current rent vs market average
+- show percentage delta
+5. Son Emlak Sor Talepleri
+- recent agency requests and statuses
+Implement backend queries optimized for dashboard speed.
+==================================================
+STEP 7 — PIYASA ANALIZI + MARKET COMPARISON
+==================================================
+Implement “Piyasa Analizi”.
+Frontend:
+- district/neighborhood average rent charts
+- trend lines
+- comparison cards
+- filters by city/district/neighborhood/roomCount
+- “existing rent vs market average” summary
+Backend:
+- use MarketRentSnapshot data
+- compute averages and comparisons
+- build endpoints for chart-ready payloads
+Also add property-level comparison:
+
+- current rent
+- market average
+- min-max range
+- difference %
+- recommendation badge:
+- Piyasa Altı
+- Piyasaya Yakın
+- Piyasa Üstü
+Use mock/seed data if external scraping is not yet implemented.
+==================================================
+STEP 8 — EMLAK SOR + TALEPLERIM + NOTIFICATIONS
+==================================================
+Implement the secondary network feature cleanly.
+Pages:
+- Emlak Sor
+- Taleplerim
+- Bildirimler
+Emlak Sor page:
+- create request form
+- fields:
+- requestType (RENTAL/SALE)
+- city
+- district
+- neighborhood
+- roomCount
+- square meter range
+- budget range
+- description
+- list previous requests
+- statuses:
+- Bekliyor
+- Cevap Geldi
+- Kapandı
+Taleplerim:
+- all requests by current agency/user
+- response count
+- status
+- detail view
+Notifications:
+- timeline UI
+- request answered
+
+- reminder sent
+- payment late
+- other relevant operational alerts
+Backend:
+- request CRUD
+- response creation
+- notification generation on response
+- agency-safe visibility
+Do NOT overcomplicate the agent network.
+Keep it operational and secondary to rental tracking.
+==================================================
+STEP 9 — REPORTS PAGE + SETTINGS PAGE
+==================================================
+These were missing from the earlier UI generation. Build them fully.
+A) REPORTS PAGE
+This must be operationally useful, not decorative.
+Include:
+- Aylık Tahsilat Toplamı
+- Geciken Tahsilat Toplamı
+- Boşta Olan Daire Sayısı
+- Piyasa Altında Kiraya Verilen Daire Sayısı
+- En Çok Gelir Getiren Mahalleler
+- Tahsilat trend chart by month
+- Neighborhood income breakdown
+- Vacancy summary
+- Rent comparison summary
+Filters:
+- date range
+- district
+- neighborhood
+- property type
+Export-ready structure if feasible.
+Backend endpoints:
+- monthly income summary
+- late payment summary
+- vacancy report
+- under-market rentals report
+- neighborhood performance report
+
+B) SETTINGS PAGE
+Build a serious settings module.
+Sections:
+1. Profil Bilgileri
+- full name
+- phone
+- email
+2. Ofis / Firma Bilgileri
+- agency name
+- city
+- district
+- display name
+- logo url
+3. Hatırlatma Ayarları
+- how many days before due date to send reminders
+- due date reminder toggle
+- how many days after due date to send reminders
+4. SMS Entegrasyonu
+- provider name
+- api key placeholder
+- sender name
+- enabled toggle
+5. WhatsApp Entegrasyonu
+- provider name
+- api token placeholder
+- enabled toggle
+6. Sistem Tercihleri
+- timezone
+- currency
+- default dashboard range
+Store all settings in database and connect forms properly.
+==================================================
+STEP 10 — POLISH, TEST, SEED, VPS DEPLOY PREP
+==================================================
+Final hardening pass.
+Do all of the following:
+
+- fix TypeScript issues
+- remove dead code
+- ensure all forms have validation
+- add loading states / empty states / error states
+- make seed data realistic
+- verify responsive layouts
+- ensure dashboard pages are navigable
+- ensure reports/settings links work
+- document env variables
+- prepare production build scripts
+- add deployment notes for emlak.tebova.com
+Also prepare a deployment checklist for a VPS using:
+- Node.js
+- PostgreSQL
+- PM2
+- Nginx
+- SSL via Certbot
+Deployment note must mention:
+- DNS for emlak.tebova.com is already configured
+- application should run behind nginx
+- production port should be configurable via env
+- include nginx example config if useful
+==================================================
+UI / UX EXPECTATIONS
+==================================================
+Keep the UI consistent with the existing design already in the repo.
+Tone:
+- premium SaaS
+- clean
+- modern
+- operational
+- easy to scan
+Do NOT transform the product into a public listing portal.
+This is an internal dashboard for real estate agents.
+==================================================
+OUTPUT EXPECTATION
+==================================================
+At the end:
+1. summarize what was completed in each of the 10 steps
+2. list all new database models
+
+3. list routes/pages/APIs added
+4. list env variables needed
+5. explain how to run migrations and seed
+6. explain how to deploy on VPS under emlak.tebova.com
+
+
