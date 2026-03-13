@@ -1,178 +1,315 @@
-Sen kıdemli bir Next.js 16 / React / frontend-debug / production-deploy mühendisisin.
-Amacın mevcut projede görünümü eski branded haline geri yaklaştırmak, hydration/build sorunlarını çözmek ve uygulamayı gerçek production modda stabil ayağa kaldırmaktır.
+You are working on an existing SaaS project called EmlakNet.
 
-ÇALIŞMA KURALLARI
-- Tahmin ederek geniş refactor yapma.
-- Gereksiz dosya taşıma, component yeniden yazımı, UI kütüphanesi değişimi yapma.
-- Önce problemi tespit et, sonra minimum ama sağlam düzeltme uygula.
-- Her değişiklikten sonra build ve runtime etkisini doğrula.
-- Eğer bir yerde emin değilsen geçici workaround değil kalıcı ve production-safe çözüm üret.
-- Dev runtime’a düşmek yasak. Hedef gerçek production build ve gerçek production start.
-- İş bitmeden “tamamlandı” deme.
-- Her adımı kısa kısa logla.
-- En sonda mutlaka değişen dosyaları ve yapılan işlemleri raporla.
+IMPORTANT:
+- Do not redesign the whole app.
+- Do not touch unrelated modules unless necessary.
+- Focus ONLY on the missing "Raporlar" and "Ayarlar" pages and all required backend/data connections for them.
+- Reuse the existing design system, layout, sidebar, card styles, table styles, spacing, and component patterns already موجود in the project.
+- Keep everything consistent with the existing premium SaaS dashboard UI.
+- Use the current project stack and conventions.
+- Build production-quality code, not mock-only UI.
 
-HEDEF
-Aşağıdaki sorunları çöz:
+PROJECT CONTEXT
 
-1. Server Component içinde next/dynamic({ ssr: false }) kullanımı var.
-   Bu kullanım Next.js 16.1.6 altında build kırıyor.
-   Özellikle app/ route’larında ve app/page.tsx benzeri dosyalarda bunu tespit et.
-   Çözüm:
-   - Server Component içinde ssr:false dynamic kullanımını kaldır.
-   - Gerekiyorsa ilgili parçayı ayrı bir "use client" component’e taşı.
-   - App router kurallarına tam uy.
+EmlakNet is a real estate SaaS for real estate agents in Turkey.
 
-2. Hydration mismatch var.
-   Server ve client aynı HTML’i üretmiyor.
-   Çözüm:
-   - Tarih, random, window kontrolü, theme state, mounted state, localStorage, media query, browser-only logic kaynaklı farkları tara.
-   - Browser-only davranışları client boundary içine al.
-   - Gerekli yerlerde mounted guard kullan ama tüm sayfayı boş gösteren kötü çözümlerden kaçın.
-   - Server/client render çıktısını stabilize et.
+Core product:
+- rental property tracking
+- rent payment tracking
+- payment reminders via SMS / WhatsApp
+- market rent comparison
+- “Emlak Sor” as a secondary feature
 
-3. Global stil zinciri kopmuş.
-   app/layout.tsx içinde globals.css importu ve body class yapısı bozulmuş olabilir.
-   Çözüm:
-   - app/layout.tsx dosyasını kontrol et.
-   - globals.css importunu garanti altına al.
-   - body/html className yapısını eski branded yapıya en yakın, tutarlı ve production-safe hale getir.
-   - Font, antialiasing, background, text rendering zincirini düzelt.
+The missing parts now are:
+1) Raporlar page
+2) Ayarlar page
 
-4. Provider katmanı eksik.
-   theme-provider, toaster ve root seviyede olması gereken provider’lar layout’a düzgün sarılmamış olabilir.
-   Çözüm:
-   - Root layout’ta hangi provider’lar olması gerekiyorsa tespit et.
-   - Theme provider, toaster ve gerekli global UI provider’larını doğru sırada bağla.
-   - Client/provider sınırlarını doğru kur.
+Your task is to implement both pages completely, including:
+- frontend UI
+- backend logic
+- database models or updates if needed
+- API endpoints
+- validation
+- empty states
+- loading states
+- realistic demo support
 
-5. Login ve bazı sayfalar branded görünümünü kaybetmiş.
-   Çözüm:
-   - Login ekranını ve ana giriş akışını incele.
-   - Var olan eski branded componentler / style tokenları / ortak ui yapıları varsa onları yeniden bağla.
-   - Minimal sade form görünümüne düşen yerleri branded hissi geri gelecek şekilde toparla.
-   - Ancak yepyeni tasarım yazma; mevcut yapıyı restore et.
+==================================================
+PART 1 — RAPORLAR PAGE
+==================================================
 
-6. Production build tamamlanmıyor.
-   pnpm build veya next build “Creating an optimized production build ...” aşamasında takılıyor.
-   Çözüm:
-   - Build’i kilitleyen exact sebebi bul.
-   - Problemli import, recursive dependency, server/client boundary hatası, invalid dynamic usage, package uyumsuzluğu, bad effect, sonsuz render, config sorunu gibi nedenleri sistematik kontrol et.
-   - Sorunun kaynağını net tespit etmeden rastgele dosya değiştirme.
-   - Build geçene kadar devam et.
+Build a fully usable “Raporlar” page.
 
-7. next start için geçerli production çıktısı oluşmuyor.
-   Çözüm:
-   - Geçerli .next production çıktısı oluştur.
-   - next start komutunun gerçekten production çıktısı ile açıldığını doğrula.
-   - 502 veya restart loop sebebi olabilecek eksikleri kapat.
+GOAL:
+This page must help the agent understand rental performance, collection performance, vacancies, and market comparison.
 
-8. PM2 yanlış moda düşmüş.
-   Production yerine next dev ile geçici açılmış olabilir.
-   Çözüm:
-   - PM2 konfigürasyonunu incele.
-   - Gerçek production çalıştırma komutunu kullan.
-   - next dev kullanımını kaldır.
-   - Süreç ismi, çalışma dizini, env, restart mantığını production-safe hale getir.
+Use a professional dashboard/reporting layout.
 
-9. Renk, tipografi ve tasarım tokenları branded histen uzaklaşmış.
-   Çözüm:
-   - globals.css, tailwind/theme tokenları, css variables, radius, palette, typography ayarlarını incele.
-   - Mevcut projede eski branded görünüme ait izler varsa onları restore et.
-   - Nötrleşmiş tokenları eski marka hissine daha yakın hale getir.
-   - Ama tüm sistemi yeniden tasarlama; sadece regressions düzelt.
+PAGE STRUCTURE
 
-10. No stdout uygulama hatası değil.
-   Bu madde kod değişikliği istemiyor.
-   Bunu yalnızca not olarak kabul et, Next.js runtime problemi gibi ele alma.
+Top filter bar:
+- date range picker
+- district filter
+- neighborhood filter
+- property type filter if relevant
+- export button placeholder if needed
 
-UYGULAMA PLANI
-Aşağıdaki sırayla ilerle:
+TOP KPI CARDS:
+1. Aylık Tahsilat Toplamı
+2. Geciken Tahsilat Toplamı
+3. Boşta Olan Daire Sayısı
+4. Piyasa Altında Kiraya Verilen Daire Sayısı
 
-AŞAMA 1 — ANALİZ
-- Önce projeyi tara.
-- Özellikle şu dosya/grupları incele:
-  - app/layout.tsx
-  - app/page.tsx
-  - app/**/page.tsx
-  - components/**
-  - providers/**
-  - theme-provider
-  - toaster / sonner / radix benzeri global ui bağları
-  - globals.css
-  - tailwind config / postcss / theme tokenları
-  - package.json
-  - next.config.*
-  - pm2 ecosystem dosyaları ya da start scriptleri
-- Sonra kısa bir teşhis özeti yaz:
-  - build’i kıran dosya/dosyalar
-  - hydration’a sebep olan yerler
-  - global stil / provider eksikleri
-  - branded görünüm regressions
-  - production deploy blokajı
+Each card should have:
+- title
+- main value
+- small helper text
+- icon
+- optional change indicator vs previous month
 
-AŞAMA 2 — SERVER/CLIENT BOUNDARY DÜZELTMESİ
-- Server Component içinde ssr:false dynamic kullanımını kaldır.
-- Gerekirse client-only componentler oluştur.
-- App router kurallarına uygun hale getir.
-- Hydration farkı üreten browser-only mantığı ayıkla.
+MAIN REPORT SECTIONS
 
-AŞAMA 3 — ROOT LAYOUT ve GLOBAL STYLE RESTORE
-- app/layout.tsx’i düzelt.
-- globals.css zincirini geri bağla.
-- html/body class yapısını düzelt.
-- Theme provider, toaster ve gerekli root provider’ları doğru şekilde ekle.
-- Layout production-safe olsun.
+1) Aylık Tahsilat Grafiği
+- monthly income / collection chart
+- use chart library already in project or a lightweight professional chart library
+- show last 6 or 12 months
+- chart must be clean and premium
 
-AŞAMA 4 — BRANDED UI REGRESSION DÜZELTME
-- Login ekranı ve bozulmuş temel sayfaları restore et.
-- Var olan branded component yapısını tekrar bağla.
-- Renk, radius, typography tokenlarını tutarlı hale getir.
-- Tasarım yeniden icat etme; regresyonu düzelt.
+2) Mahalle Bazlı Gelir Dağılımı
+- bar chart or horizontal chart
+- which neighborhoods generate most rental income
 
-AŞAMA 5 — BUILD FIX
-- pnpm build çalıştır.
-- Takıldığı yeri izole et.
-- Gerekirse problemli dosyayı tek tek daralt.
-- Build tamamen başarılı olana kadar devam et.
+3) Boşta Olan Daireler Özeti
+- table or card list
+- property title
+- neighborhood
+- estimated market rent
+- vacant since date if available
+- status badge
 
-AŞAMA 6 — PRODUCTION RUNTIME FIX
-- next dev çalışan süreci kapat.
-- Gerçek production komutu ile çalıştır.
-- PM2’yi doğru komutla ayağa kaldır.
-- Uygulamanın açıldığını doğrula.
-- Mümkünse health check uygula.
+4) Piyasa Altı Kiralıklar Raporu
+- list rentals where current rent is lower than market average
+- show:
+  - property title
+  - neighborhood
+  - current rent
+  - market average
+  - difference percent
+  - recommendation badge
 
-DOĞRULAMA KRİTERLERİ
-İş tamamlandı sayılmadan önce bunları doğrula:
+5) Geciken Tahsilat Raporu
+- list overdue payments
+- show:
+  - tenant name
+  - property
+  - due date
+  - amount
+  - late days
+  - status
 
-1. pnpm build başarılı olmalı.
-2. next start veya production start komutu çalışmalı.
-3. PM2’de süreç production mod mantığında çalışmalı, dev runtime kalmamalı.
-4. Login sayfası ve ana sayfalar styled/branded görünmeli.
-5. Theme/toast/provider yapıları aktif olmalı.
-6. Hydration hatası oluşturan temel farklar giderilmiş olmalı.
-7. Server Component + dynamic ssr:false hatası kalmamalı.
+6) En Çok Gelir Getiren Mahalleler
+- compact ranked list or chart
 
-KOMUT KURALLARI
-- Önce incele, sonra düzelt.
-- Büyük yıkıcı değişiklik yapma.
-- Her kritik adımdan sonra kısa çıktı ver.
-- Build almadan işi bitmiş sayma.
-- Eğer bir dosyayı değiştirdiysen neden değiştirdiğini belirt.
+DATA REQUIREMENTS
 
-TESLİM FORMATI
-İşin sonunda şu formatta rapor ver:
+Use real backend queries, not static front-end-only fake data.
 
-1. Tespit edilen kök nedenler
-2. Değiştirilen dosyalar
-3. Her dosyada ne düzeltildiği
-4. Build sonucu
-5. Production runtime sonucu
-6. PM2 durumu
-7. Kalan riskler varsa kısa not
+Create report service functions to calculate:
+- total collected rent in selected date range
+- total overdue amount
+- total vacant properties
+- count of under-market rentals
+- monthly collections grouped by month
+- income grouped by neighborhood
+- overdue payment records
+- vacant property records
+- under-market rental records
 
-EK ZORUNLU
-- İş bitince /tmp/final_report.txt dosyasına aynı özeti yaz.
-- Terminale sadece bir satır FINAL_OK veya FINAL_FAIL bas.
-- Eğer fail ise exact blokajı açıkça yaz.
+DATABASE / BACKEND NOTES
+
+Use existing schema if already present.
+If missing, add only necessary support fields or queries.
+Do not create unnecessary complexity.
+
+Expected data sources:
+- properties
+- rental contracts
+- payment schedules / rent payments
+- market rent data
+
+Create API routes or server actions for:
+- reports summary
+- reports monthly income
+- reports neighborhood income
+- reports overdue payments
+- reports vacant properties
+- reports under market rentals
+
+Make sure queries are scoped to current agency / current user tenancy rules.
+
+UX REQUIREMENTS FOR REPORTS
+- empty state if no report data
+- loading skeletons
+- mobile-friendly stacked layout
+- visually premium cards/charts
+- readable tables
+- no clutter
+
+==================================================
+PART 2 — AYARLAR PAGE
+==================================================
+
+Build a complete “Ayarlar” page.
+
+GOAL:
+Let the user manage profile, office/agency info, reminder preferences, SMS/WhatsApp integration placeholders, and system preferences.
+
+PAGE STRUCTURE
+
+Use a clean settings layout with sections/cards.
+
+SETTINGS SECTIONS
+
+1) Profil Bilgileri
+Fields:
+- full name
+- email
+- phone
+
+Actions:
+- save changes
+
+2) Ofis / Firma Bilgileri
+Fields:
+- agency name
+- city
+- district
+- display name
+- logo URL or logo upload placeholder
+- office phone if useful
+
+Actions:
+- save changes
+
+3) Hatırlatma Ayarları
+Fields:
+- send reminder X days before due date
+- send reminder on due date (toggle)
+- send reminder X days after due date
+- preferred channels:
+  - SMS toggle
+  - WhatsApp toggle
+
+Use either:
+- numeric inputs
+or
+- tag/multi-select style input
+depending on existing design system
+
+4) SMS Entegrasyonu
+Fields:
+- SMS provider name
+- sender name
+- API key placeholder
+- enabled toggle
+
+IMPORTANT:
+Do not expose secrets insecurely in UI.
+If current project has no secret manager, store only placeholder/config-safe fields or mark clearly for secure backend env binding.
+
+5) WhatsApp Entegrasyonu
+Fields:
+- WhatsApp provider name
+- API token placeholder
+- enabled toggle
+
+Same security note:
+Do not leak sensitive secrets insecurely.
+
+6) Sistem Tercihleri
+Fields:
+- timezone
+- currency
+- default dashboard date range
+- maybe language if suitable
+
+BACKEND REQUIREMENTS FOR SETTINGS
+
+Create or use a settings table scoped by agency.
+
+Suggested settings data:
+- agencyId
+- smsEnabled
+- whatsappEnabled
+- reminderDaysBefore
+- reminderOnDueDate
+- reminderDaysAfter
+- smsProviderName
+- smsSenderName
+- whatsappProviderName
+- timezone
+- currency
+- defaultDashboardRange
+- companyDisplayName
+- companyLogoUrl
+
+Also update:
+- user profile
+- agency profile
+
+Create API routes or server actions for:
+- get settings
+- update settings
+- get profile
+- update profile
+- get agency settings
+- update agency settings
+
+VALIDATION
+Use schema validation.
+Phone/email/url fields should be validated.
+Numeric reminder fields should be constrained logically.
+
+UX REQUIREMENTS FOR SETTINGS
+- loading states
+- success toast
+- validation errors
+- section-based save
+- mobile responsive
+- same style as existing dashboard
+- not crowded
+
+==================================================
+GENERAL CODING REQUIREMENTS
+==================================================
+
+- Keep TypeScript clean
+- Reuse current components
+- Reuse current auth/session logic
+- Reuse current dashboard shell/sidebar/topbar
+- Make pages accessible from sidebar links:
+  - /raporlar
+  - /ayarlar
+or the project’s equivalent routing structure
+
+- Ensure the sidebar buttons actually work and route properly
+- Ensure both pages have polished empty states
+- Ensure both pages render properly on desktop and mobile
+
+==================================================
+EXPECTED DELIVERABLES
+==================================================
+
+When finished, provide:
+
+1. Summary of what was implemented
+2. Files created/updated
+3. Routes/pages added
+4. API endpoints or server actions added
+5. Database changes/migrations if any
+6. Any env variables needed
+7. Short testing instructions
+
+IMPORTANT FINAL RULE:
+Do not stop at static UI.
+Both pages must be connected to real data flow and usable inside the app.
