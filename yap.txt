@@ -1,0 +1,131 @@
+VPS üzerinde Flutter ile basit, offline çalışan Android mobil uygulama oluştur.
+
+Proje klasörü:
+/var/www/flutter-ball-app
+
+Uygulama fikri:
+Ekrana dokundukça top sektirdiğimiz, skor tutan basit bir oyun uygulaması.
+
+Genel istekler:
+
+1. Flutter kullanılacak.
+2. Uygulama tamamen offline çalışacak.
+3. Login, profil, üyelik, internet bağlantısı olmayacak.
+4. Android release AAB üretilecek.
+5. Package name:
+com.teberizm.ballgame
+
+Uygulamada 4 sayfa olsun:
+
+1. Ana Sayfa
+- Başla butonu
+- En yüksek skor gösterimi
+- Kısa açıklama
+
+2. Oyun Sayfası
+- Ekranda bir top olacak.
+- Kullanıcı ekrana dokundukça top yukarı doğru sekecek.
+- Her başarılı dokunuşta skor artsın.
+- Top yere düşerse oyun bitsin.
+- Anlık skor gösterilsin.
+- Yeniden başlat butonu olsun.
+
+3. Skorlar Sayfası
+- En yüksek skor gösterilsin.
+- Son skor gösterilsin.
+- Skorları sıfırla butonu olsun.
+- Skorlar cihazda local olarak kaydedilsin. SharedPreferences kullanılabilir.
+
+4. Hakkında Sayfası
+- Uygulama adı
+- Kısa açıklama
+- Sürüm bilgisi
+
+Tasarım:
+- Modern, sade ve mobil uyumlu tasarım yap.
+- Hem küçük hem büyük Android ekranlarda düzgün görünsün.
+- Renkler canlı ama göz yormayan şekilde olsun.
+- Butonlar büyük ve dokunması kolay olsun.
+
+Keystore oluşturma ve bağlama:
+
+1. android/key.properties dosyasını oluştur:
+
+storePassword=12345678
+keyPassword=12345678
+keyAlias=upload
+storeFile=upload-keystore.jks
+
+2. Android keystore dosyasını otomatik oluştur:
+Konum:
+android/app/upload-keystore.jks
+
+Linux VPS üzerinde keytool kullan.
+Eğer keytool yoksa önce Java/JDK kurulumunu kontrol et.
+
+Keystore komutu şu mantıkla çalışmalı:
+
+keytool -genkey -v \
+-keystore android/app/upload-keystore.jks \
+-storetype JKS \
+-keyalg RSA \
+-keysize 2048 \
+-validity 10000 \
+-alias upload \
+-storepass 12345678 \
+-keypass 12345678 \
+-dname "CN=onur, OU=onur, O=onur, L=TR, S=TR, C=TR"
+
+3. android/app/build.gradle dosyasını release signing için düzenle.
+Flutter Android release build sırasında android/key.properties okunmalı.
+Release build signingConfig olarak bu keystore’u kullanmalı.
+
+4. Eğer build.gradle yapısı yeni Flutter sürümüne göre build.gradle.kts ise ona uygun düzenle.
+
+Build sistemi:
+
+1. build.sh oluştur.
+2. build.sh tek komutla şunları yapsın:
+- Flutter kurulu mu kontrol etsin.
+- flutter clean çalıştırsın.
+- flutter pub get çalıştırsın.
+- key.properties yoksa oluştursun.
+- upload-keystore.jks yoksa oluştursun.
+- release AAB oluştursun:
+  flutter build appbundle --release
+- Oluşan AAB dosyasını şu klasöre kopyalasın:
+  /var/www/downloads/ballgame-release.aab
+
+3. Ekran görüntüleri için:
+- 4 adet tanıtım görseli oluştur.
+- Görseller şu klasörde olsun:
+  /var/www/downloads/ballgame-screenshots/1.png
+  /var/www/downloads/ballgame-screenshots/2.png
+  /var/www/downloads/ballgame-screenshots/3.png
+  /var/www/downloads/ballgame-screenshots/4.png
+
+Ekran görüntüsü üretmek için emülatör şartsa alternatif olarak bana uygulamanın frontend kısmı ile ilgili bir link oluştur ekran görüntülerini ben kendim de alırım.
+
+Nginx downloads klasörü yayınlıyorsa indirme linkleri şu formatta olacak:
+
+AAB:
+https://tebova.com/downloads/ballgame-release.aab
+
+Screenshots:
+https://tebova.com/downloads/ballgame-screenshots/1.png
+https://tebova.com/downloads/ballgame-screenshots/2.png
+https://tebova.com/downloads/ballgame-screenshots/3.png
+https://tebova.com/downloads/ballgame-screenshots/4.png
+
+İş bitince bana sadece şunları raporla:
+
+- Proje klasörü
+- Package name
+- Version name
+- Version code
+- AAB dosya yolu
+- AAB indirme linki
+- 4 ekran görüntüsü linki
+- Keystore oluşturuldu mu?
+- Release signing aktif mi?
+- Build başarılı mı?
