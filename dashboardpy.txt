@@ -1,93 +1,223 @@
 import streamlit as st
 import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
 import os
+from datetime import datetime
 
-# Sayfa Ayarları
-st.set_page_config(page_title="V4.0 Bot Dashboard", page_icon="🤖", layout="wide")
+# ==========================================
+# 🎨 SAYFA VE TEMA AYARLARI
+# ==========================================
+st.set_page_config(
+    page_title="Project Apex V5.0 | Kurumsal Panel",
+    page_icon="🤖",
+    layout="wide"
+)
 
-FILE_OPEN_POSITIONS = "acik_islemler.csv"
-FILE_TRADE_HISTORY = "islem_gecmisi.csv"
+# Dark Neon Custom CSS
+st.markdown("""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Urbanist:wght@400;600;700&display=swap');
+    
+    html, body, [class*="css"] {
+        font-family: 'Urbanist', sans-serif;
+        background-color: #0e1117;
+    }
+    .stMetric {
+        background-color: #161b22;
+        padding: 20px;
+        border-radius: 15px;
+        border: 1px solid #30363d;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    .stDataFrame {
+        border: 1px solid #30363d;
+        border-radius: 10px;
+    }
+    div[data-testid="stExpander"] {
+        background-color: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 10px;
+        margin-bottom: 10px;
+    }
+    .status-tp { color: #deff9a; font-weight: bold; }
+    .status-sl { color: #ff4d4d; font-weight: bold; }
+    .status-be { color: #8b949e; font-weight: bold; }
+    </style>
+    """, unsafe_allow_stdio=True)
 
-# Veri Okuma Fonksiyonları (Hata almamak için güvenli okuma)
-def load_data(file_name):
-    if os.path.exists(file_name) and os.path.getsize(file_name) > 0:
-        return pd.read_csv(file_name)
+# --- DOSYA YOLLARI ---
+FILE_OPEN = "acik_islemler.csv"
+FILE_HISTORY = "islem_gecmisi.csv"
+
+# ==========================================
+# 📊 VERİ YÜKLEME VE HESAPLAMA MOTORU
+# ==========================================
+
+def load_data(file):
+    if os.path.exists(file) and os.path.getsize(file) > 0:
+        return pd.read_csv(file)
     return pd.DataFrame()
 
-# Sayfa Başlığı
-st.title("🤖 V4.0 MTF Exhaustion Bot - Canlı Panel")
-st.markdown("---")
+def calculate_max_loss_streak(df):
+    if df.empty: return 0
+    df = df.copy()
+    # Zarar edenleri 1, kâr edenleri 0 olarak işaretle
+    df['is_loss'] = (df['Net Kâr/Zarar ($)'] < 0).astype(int)
+    # Ardışık toplamları hesapla
+    streaks = df['is_loss'] * (df['is_loss'].groupby((df['is_loss'] != df['is_loss'].shift()).cumsum()).cumcount() + 1)
+    return streaks.max()
 
-# Verileri Yükle
-df_open = load_data(FILE_OPEN_POSITIONS)
-df_history = load_data(FILE_TRADE_HISTORY)
-
-# ==========================================
-# ÜST BİLGİ PANELLERİ (METRİKLER)
-# ==========================================
-col1, col2, col3, col4 = st.columns(4)
-
-# 1. Açık İşlem Sayısı
-with col1:
-    open_count = len(df_open) if not df_open.empty else 0
-    st.metric("Açık Pozisyonlar", open_count)
-
-# 2. Toplam Kâr/Zarar
-with col2:
-    total_pnl = round(df_history["Net Kâr/Zarar ($)"].sum(), 2) if not df_history.empty else 0.0
-    st.metric("Toplam Gerçekleşen Kâr/Zarar", f"${total_pnl}")
-
-# 3. Toplam İşlem Sayısı
-with col3:
-    total_trades = len(df_history) if not df_history.empty else 0
-    st.metric("Toplam Kapanan İşlem", total_trades)
-
-# 4. Kazanma Oranı (Win Rate)
-with col4:
-    win_rate = 0.0
-    if not df_history.empty and total_trades > 0:
-        winning_trades = len(df_history[df_history["Net Kâr/Zarar ($)"] > 0])
-        win_rate = round((winning_trades / total_trades) * 100, 1)
-    st.metric("Kazanma Oranı (Win Rate)", f"%{win_rate}")
-
-st.markdown("---")
+# --- VERİLERİ ÇEK ---
+df_open = load_data(FILE_OPEN)
+df_history = load_data(FILE_HISTORY)
 
 # ==========================================
-# SEKME (TAB) YAPISI
+# 🏗️ PANEL BAŞLIĞI VE ÜST METRİKLER
 # ==========================================
-tab1, tab2, tab3 = st.tabs(["🟢 Açık Pozisyonlar", "📚 İşlem Geçmişi", "📈 Büyüme Grafiği"])
+
+st.title("🚀 Project Apex V5.0 - Corporate Command Center")
+st.caption("Ema99 Macro Trend Filter + Kademeli TP1/Breakeven Motoru Canlı Veri Akışı")
+
+if not df_history.empty:
+    # Metrik Hesaplamaları
+    total_net_pnl = df_history["Net Kâr/Zarar ($)"].sum()
+    total_trades = len(df_history)
+    
+    # Profit Factor
+    total_gains = df_history[df_history["Net Kâr/Zarar ($)"] > 0]["Net Kâr/Zarar ($)"].sum()
+    total_losses = abs(df_history[df_history["Net Kâr/Zarar ($)"] < 0]["Net Kâr/Zarar ($)"].sum())
+    profit_factor = round(total_gains / total_losses, 2) if total_losses > 0 else "∞"
+    
+    # Win Rate
+    win_count = len(df_history[df_history["Net Kâr/Zarar ($)"] > 0])
+    win_rate = round((win_count / total_trades) * 100, 1)
+    
+    # Max Loss Streak
+    loss_streak = calculate_max_loss_streak(df_history)
+
+    # Görsel Metrikler
+    m1, m2, m3, m4, m5 = st.columns(5)
+    m1.metric("Toplam Net PnL", f"${round(total_net_pnl, 2)}")
+    m2.metric("Profit Factor", profit_factor)
+    m3.metric("Win Rate", f"%{win_rate}")
+    m4.metric("Max Loss Streak", f"{loss_streak} İşlem")
+    m5.metric("Toplam İşlem", total_trades)
+else:
+    st.info("Henüz veri birikmedi. Botun işlem açması bekleniyor...")
+
+st.divider()
+
+# ==========================================
+# 📈 GRAFİK VE ANALİZ BÖLÜMÜ
+# ==========================================
+
+col_left, col_right = st.columns([2, 1])
+
+with col_left:
+    st.subheader("📈 Kümülatif Kâr Gelişimi (Net)")
+    if not df_history.empty:
+        df_history["Cumulative_PnL"] = df_history["Net Kâr/Zarar ($)"].cumsum()
+        fig_line = px.line(
+            df_history, 
+            x="Çıkış Zamanı", 
+            y="Cumulative_PnL",
+            template="plotly_dark",
+            color_discrete_sequence=['#deff9a']
+        )
+        fig_line.update_layout(hovermode="x unified", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+        st.plotly_chart(fig_line, use_container_width=True)
+
+with col_right:
+    st.subheader("🎯 Sonuç Dağılımı")
+    if not df_history.empty:
+        # TP1, TP2, SL, BE Dağılımı
+        dist = df_history["Kapanış Nedeni"].value_counts()
+        fig_pie = px.pie(
+            names=dist.index, 
+            values=dist.values, 
+            hole=0.4,
+            template="plotly_dark",
+            color_discrete_sequence=px.colors.qualitative.Pastel
+        )
+        fig_pie.update_layout(showlegend=False, paper_bgcolor="rgba(0,0,0,0)")
+        st.plotly_chart(fig_pie, use_container_width=True)
+
+st.divider()
+
+# ==========================================
+# 📑 TAB PANELİ (AÇIK, KAPALI, LİDERLİK)
+# ==========================================
+
+tab1, tab2, tab3 = st.tabs(["🟢 Açık Pozisyonlar", "📚 İşlem Geçmişi & Forensics", "🏆 Coin Liderlik Tablosu"])
 
 with tab1:
     st.subheader("Anlık Takip Edilen İşlemler")
     if not df_open.empty:
-        # PnL'e göre renklendirme (Kâr yeşil, zarar kırmızı)
-        def color_pnl(val):
-            color = 'green' if val > 0 else 'red' if val < 0 else 'gray'
+        # PnL Renklendirme
+        def style_pnl(val):
+            color = '#deff9a' if val > 0 else '#ff4d4d'
             return f'color: {color}; font-weight: bold;'
-        
-        st.dataframe(df_open.style.map(color_pnl, subset=['Anlık PnL ($)', 'Anlık ROE (%)']), use_container_width=True)
+
+        st.dataframe(
+            df_open.style.applymap(style_pnl, subset=['Anlık PnL ($)', 'Anlık ROE (%)']),
+            use_container_width=True
+        )
     else:
-        st.info("Şu an açık bir pozisyon bulunmuyor.")
+        st.info("Şu an aktif işlem bulunmuyor.")
 
 with tab2:
-    st.subheader("Kapanan İşlemler Defteri")
+    st.subheader("İşlem Geçmişi ve Strateji Detayı")
     if not df_history.empty:
-        # En son işlem en üstte görünsün diye ters çeviriyoruz
-        st.dataframe(df_history.iloc[::-1], use_container_width=True)
-    else:
-        st.info("Henüz kapanmış bir işlem yok.")
+        # En yeni işlem en üstte
+        df_sorted = df_history.iloc[::-1]
+        
+        for index, row in df_sorted.iterrows():
+            # Renk belirleme
+            status_color = "#deff9a" if "TAKE PROFIT" in row["Kapanış Nedeni"] else "#ff4d4d" if "STOP LOSS" in row["Kapanış Nedeni"] else "#8b949e"
+            
+            # Expander (MODAL GÖREVİ GÖRÜR)
+            with st.expander(f"{row['Sembol']} | {row['Çıkış Zamanı']} | Net: ${row['Net Kâr/Zarar ($)']} | {row['Kapanış Nedeni']}"):
+                c1, c2, c3 = st.columns(3)
+                c1.write(f"**Giriş Fiyatı:** {row['Giriş Fiyatı']}")
+                c1.write(f"**Çıkış Fiyatı:** {row['Çıkış Fiyatı']}")
+                
+                c2.write(f"**Brüt PnL:** ${row['Brüt PnL ($)']}")
+                c2.write(f"**Komisyon:** -${row['Komisyon ($)']}")
+                
+                c3.write(f"**Kapanan Pay:** {row['Kapanan Pay']}")
+                c3.write(f"**ROE:** %{row['ROE (%)']}")
+                
+                st.markdown("---")
+                st.markdown(f"🔍 **STRATEJİ DETAYI (FORENSICS):**")
+                st.write(f"""
+                Bu işlem **V5.0 Corporate** algoritması tarafından açılmıştır. 
+                - **Koşul:** 1 Saatlik grafik EMA99 altında 'Bearish' yapıdayken 5 dakikalık grafikte 'Overextension' (Aşırı Şişme) tespit edildi.
+                - **Tetik:** 1 dakikalık grafikte Hacim Ortalamasının 1.5 katı üzerinde bir satış mumu ve EMA7 kırılımı ile giriş onaylandı.
+                - **Sonuç:** İşlem {row['Kapanış Nedeni']} ile sonuçlandı.
+                """)
 
 with tab3:
-    st.subheader("Kümülatif Kâr/Zarar Grafiği")
+    st.subheader("Coin Bazlı Performans Liderlik Tablosu")
     if not df_history.empty:
-        # Zaman içindeki toplam kârı hesapla
-        df_chart = df_history.copy()
-        df_chart["Kümülatif Kâr ($)"] = df_chart["Net Kâr/Zarar ($)"].cumsum()
-        df_chart.index = df_chart["Çıkış Zamanı"] # X eksenine zamanı koy
-        st.line_chart(df_chart["Kümülatif Kâr ($)"])
-    else:
-        st.info("Grafik oluşturulabilmesi için en az 1 işlemin kapanması gerekiyor.")
+        # Coin bazlı gruplama
+        leaderboard = df_history.groupby("Sembol").agg({
+            "Net Kâr/Zarar ($)": "sum",
+            "Sembol": "count"
+        }).rename(columns={"Sembol": "İşlem Sayısı"}).sort_values(by="Net Kâr/Zarar ($)", ascending=False)
+        
+        # Renkli gösterim
+        def color_lead(val):
+            color = '#deff9a' if val > 0 else '#ff4d4d'
+            return f'background-color: {color}22; color: {color}; font-weight: bold;'
+        
+        st.dataframe(leaderboard.style.applymap(color_lead, subset=['Net Kâr/Zarar ($)']), use_container_width=True)
+        st.info("💡 Not: Sürekli zarar yazan (Kırmızı) coinleri botun içindeki BLACKLIST_COINS listesine ekleyerek performansı artırabilirsiniz.")
 
-# Otomatik yenileme butonu
+# --- FOOTER ---
+st.markdown("---")
+st.markdown(f"<p style='text-align: center; opacity: 0.5;'>Project Apex V5.0 Dashboard | Son Güncelleme: {datetime.now().strftime('%H:%M:%S')}</p>", unsafe_allow_stdio=True)
+
+# Otomatik Yenileme Butonu
 if st.button("🔄 Verileri Yenile"):
     st.rerun()
