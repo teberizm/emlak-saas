@@ -1,0 +1,93 @@
+import streamlit as st
+import pandas as pd
+import os
+
+# Sayfa Ayarları
+st.set_page_config(page_title="V4.0 Bot Dashboard", page_icon="🤖", layout="wide")
+
+FILE_OPEN_POSITIONS = "acik_islemler.csv"
+FILE_TRADE_HISTORY = "islem_gecmisi.csv"
+
+# Veri Okuma Fonksiyonları (Hata almamak için güvenli okuma)
+def load_data(file_name):
+    if os.path.exists(file_name) and os.path.getsize(file_name) > 0:
+        return pd.read_csv(file_name)
+    return pd.DataFrame()
+
+# Sayfa Başlığı
+st.title("🤖 V4.0 MTF Exhaustion Bot - Canlı Panel")
+st.markdown("---")
+
+# Verileri Yükle
+df_open = load_data(FILE_OPEN_POSITIONS)
+df_history = load_data(FILE_TRADE_HISTORY)
+
+# ==========================================
+# ÜST BİLGİ PANELLERİ (METRİKLER)
+# ==========================================
+col1, col2, col3, col4 = st.columns(4)
+
+# 1. Açık İşlem Sayısı
+with col1:
+    open_count = len(df_open) if not df_open.empty else 0
+    st.metric("Açık Pozisyonlar", open_count)
+
+# 2. Toplam Kâr/Zarar
+with col2:
+    total_pnl = round(df_history["Net Kâr/Zarar ($)"].sum(), 2) if not df_history.empty else 0.0
+    st.metric("Toplam Gerçekleşen Kâr/Zarar", f"${total_pnl}")
+
+# 3. Toplam İşlem Sayısı
+with col3:
+    total_trades = len(df_history) if not df_history.empty else 0
+    st.metric("Toplam Kapanan İşlem", total_trades)
+
+# 4. Kazanma Oranı (Win Rate)
+with col4:
+    win_rate = 0.0
+    if not df_history.empty and total_trades > 0:
+        winning_trades = len(df_history[df_history["Net Kâr/Zarar ($)"] > 0])
+        win_rate = round((winning_trades / total_trades) * 100, 1)
+    st.metric("Kazanma Oranı (Win Rate)", f"%{win_rate}")
+
+st.markdown("---")
+
+# ==========================================
+# SEKME (TAB) YAPISI
+# ==========================================
+tab1, tab2, tab3 = st.tabs(["🟢 Açık Pozisyonlar", "📚 İşlem Geçmişi", "📈 Büyüme Grafiği"])
+
+with tab1:
+    st.subheader("Anlık Takip Edilen İşlemler")
+    if not df_open.empty:
+        # PnL'e göre renklendirme (Kâr yeşil, zarar kırmızı)
+        def color_pnl(val):
+            color = 'green' if val > 0 else 'red' if val < 0 else 'gray'
+            return f'color: {color}; font-weight: bold;'
+        
+        st.dataframe(df_open.style.map(color_pnl, subset=['Anlık PnL ($)', 'Anlık ROE (%)']), use_container_width=True)
+    else:
+        st.info("Şu an açık bir pozisyon bulunmuyor.")
+
+with tab2:
+    st.subheader("Kapanan İşlemler Defteri")
+    if not df_history.empty:
+        # En son işlem en üstte görünsün diye ters çeviriyoruz
+        st.dataframe(df_history.iloc[::-1], use_container_width=True)
+    else:
+        st.info("Henüz kapanmış bir işlem yok.")
+
+with tab3:
+    st.subheader("Kümülatif Kâr/Zarar Grafiği")
+    if not df_history.empty:
+        # Zaman içindeki toplam kârı hesapla
+        df_chart = df_history.copy()
+        df_chart["Kümülatif Kâr ($)"] = df_chart["Net Kâr/Zarar ($)"].cumsum()
+        df_chart.index = df_chart["Çıkış Zamanı"] # X eksenine zamanı koy
+        st.line_chart(df_chart["Kümülatif Kâr ($)"])
+    else:
+        st.info("Grafik oluşturulabilmesi için en az 1 işlemin kapanması gerekiyor.")
+
+# Otomatik yenileme butonu
+if st.button("🔄 Verileri Yenile"):
+    st.rerun()
