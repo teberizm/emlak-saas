@@ -281,17 +281,18 @@ def main():
             last_macro_check = now
 
         # ========================================================
-        # AŞAMA 1: AÇIK POZİSYONLARI YÖNET (V5.0 KADEMELİ SİSTEM)
+        # AŞAMA 1: AÇIK POZİSYONLARI YÖNET (V5.0 CANLI FİYAT MOTORU)
         # ========================================================
         for symbol in list(open_positions.keys()):
             try:
                 df_1m = fetch_data(exchange, symbol, TF_TRIGGER)
                 if df_1m is None or len(df_1m) < 5: continue
                 
-                last_1m = df_1m.iloc[-2]
-                pos = open_positions[symbol]
+                # ÇIKIŞ İŞLEMLERİ İÇİN KAPANMIŞ MUM DEĞİL, CANLI FİYAT KULLANILIR!
+                live_candle = df_1m.iloc[-1]
+                current_price = live_candle["close"] 
                 
-                current_price = last_1m["close"]
+                pos = open_positions[symbol]
                 pos["current_price"] = current_price
                 
                 size_multiplier = 0.5 if pos["tp1_hit"] else 1.0
@@ -299,8 +300,8 @@ def main():
                 pos["current_pnl"] = price_diff_pct * (POSITION_SIZE_USD * size_multiplier)
                 pos["current_roe"] = price_diff_pct * 100 * LEVERAGE
 
-                # A) STOP LOSS / BREAKEVEN
-                if last_1m["high"] >= pos["sl_price"]:
+                # A) STOP LOSS / BREAKEVEN KONTROLÜ (Canlı Fiyat ile)
+                if current_price >= pos["sl_price"]:
                     exit_price = pos["sl_price"]
                     pnl = ((pos["entry_price"] - exit_price) / pos["entry_price"]) * (POSITION_SIZE_USD * size_multiplier)
                     roe = ((pos["entry_price"] - exit_price) / pos["entry_price"]) * 100 * LEVERAGE
@@ -313,8 +314,8 @@ def main():
                     del open_positions[symbol]
                     continue
 
-                # B) TAKE PROFIT 1
-                if not pos["tp1_hit"] and last_1m["low"] <= pos["tp1_price"]:
+                # B) TAKE PROFIT 1 KONTROLÜ (Canlı Fiyat ile)
+                if not pos["tp1_hit"] and current_price <= pos["tp1_price"]:
                     exit_price = pos["tp1_price"]
                     pnl = ((pos["entry_price"] - exit_price) / pos["entry_price"]) * (POSITION_SIZE_USD * 0.5)
                     roe = ((pos["entry_price"] - exit_price) / pos["entry_price"]) * 100 * LEVERAGE
@@ -328,8 +329,8 @@ def main():
                     pos["sl_price"] = pos["entry_price"] 
                     continue
 
-                # C) TAKE PROFIT 2
-                if pos["tp1_hit"] and last_1m["low"] <= pos["tp2_price"]:
+                # C) TAKE PROFIT 2 KONTROLÜ (Canlı Fiyat ile)
+                if pos["tp1_hit"] and current_price <= pos["tp2_price"]:
                     exit_price = pos["tp2_price"]
                     pnl = ((pos["entry_price"] - exit_price) / pos["entry_price"]) * (POSITION_SIZE_USD * 0.5)
                     roe = ((pos["entry_price"] - exit_price) / pos["entry_price"]) * 100 * LEVERAGE
@@ -343,8 +344,6 @@ def main():
                     
             except Exception:
                 pass
-
-        save_open_positions_to_csv()
 
         # ========================================================
         # AŞAMA 2: SİNYAL VE TETİKLEYİCİ TARAMASI
