@@ -163,7 +163,11 @@ with tab2:
         df_sorted = df_history.iloc[::-1]
         
         for index, row in df_sorted.iterrows():
-            with st.expander(f"{row['Sembol']} | {row['Çıkış Zamanı']} | Net: ${row['Net Kâr/Zarar ($)']} | {row['Kapanış Nedeni']}"):
+            
+            # GÜNCELLEME: Başlıkta Giriş ve Çıkış zamanlarını aynı anda gösteriyoruz
+            baslik = f"{row['Sembol']} | Giriş: {row['Giriş Zamanı']} ➔ Çıkış: {row['Çıkış Zamanı']} | Net PnL: ${row['Net Kâr/Zarar ($)']} | {row['Kapanış Nedeni']}"
+            
+            with st.expander(baslik):
                 c1, c2, c3 = st.columns(3)
                 c1.write(f"**Giriş Fiyatı:** {row['Giriş Fiyatı']}")
                 c1.write(f"**Çıkış Fiyatı:** {row['Çıkış Fiyatı']}")
@@ -177,7 +181,6 @@ with tab2:
                 st.markdown("---")
                 st.markdown(f"🔍 **GİRİŞ ANINDAKİ PİYASA VERİLERİ (FORENSICS):**")
                 
-                # Dinamik CSV verisini okuma (Eski işlemlerde hata vermemesi için `.get()` kullanımı)
                 detay = row.get('Strateji Detayı', '')
                 if pd.isna(detay) or detay == "": 
                     detay = "Eski işlem (Detay bulunmuyor)."
