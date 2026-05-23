@@ -4,7 +4,7 @@ import requests
 import time
 import os
 import xml.etree.ElementTree as ET
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 # ==========================================
 # ⚙️ GENEL AYARLAR VE RİSK YÖNETİMİ
@@ -18,23 +18,23 @@ TOP_SYMBOL_LIMIT = 30
 SYMBOL_UPDATE_INTERVAL = 5 * 60
 
 # Zaman Dilimleri
-TF_MACRO = "1h"      # Büyük resim trend filtresi
-TF_SETUP = "5m"      # Kurulum aranan ana grafik
-TF_TRIGGER = "1m"    # Tetiğin çekildiği alt grafik
+TF_MACRO = "1h"      
+TF_SETUP = "5m"      
+TF_TRIGGER = "1m"    
 
-# Sinyal ve İşlem Ayarları
+# Sinyal Ayarları
 WATCH_MINUTES = 15   
 COOLDOWN_SECONDS = 30 * 60 
 
-# 🎯 KADEMELİ ATR ÇARPANLARI
-ATR_SL_MULTIPLIER = 1.2   # İlk Zarar Kes mesafesi
-ATR_TP1_MULTIPLIER = 1.0  # Kâr Al 1 (%50 pozisyon kapanır, stop girişe çekilir)
-ATR_TP2_MULTIPLIER = 2.2  # Kâr Al 2 (Kalan %50 runner pozisyon nihai hedefi)
+# KADEMELİ ATR ÇARPANLARI
+ATR_SL_MULTIPLIER = 1.2   
+ATR_TP1_MULTIPLIER = 1.0  
+ATR_TP2_MULTIPLIER = 2.2  
 
 # SİMÜLASYON KASASI
 MARGIN_USD = 100.0   
 LEVERAGE = 10        
-POSITION_SIZE_USD = MARGIN_USD * LEVERAGE # Toplam pozisyon büyüklüğü ($1000)
+POSITION_SIZE_USD = MARGIN_USD * LEVERAGE 
 
 BLACKLIST_COINS = ["BTC/USDT:USDT", "ETH/USDT:USDT", "USDC/USDT:USDT", "FDUSD/USDT:USDT"]
 
@@ -54,6 +54,10 @@ FILE_TRADE_HISTORY = "islem_gecmisi.csv"
 # ==========================================
 # 🛠 YARDIMCI FONKSİYONLAR
 # ==========================================
+
+# 🛡️ GÜVENLİ TÜRKİYE SAATİ (UTC+3) FONKSİYONU
+def get_tsi_time():
+    return datetime.now(timezone.utc) + timedelta(hours=3)
 
 def create_exchange():
     return getattr(ccxt, EXCHANGE_ID)({
@@ -103,7 +107,6 @@ def check_btc_trend(exchange):
     return (last["close"] > last["ema_20"]) and (last["ema_20"] > prev["ema_20"])
 
 def check_1h_macro_trend(exchange, symbol):
-    """Sadece 1h grafikte fiyat EMA99'un altındaysa (Ana trend düşüşse) True döner."""
     df = fetch_data(exchange, symbol, TF_MACRO)
     if df is None or len(df) < 100: return False
     df["ema_99"] = df["close"].ewm(span=99, adjust=False).mean()
@@ -221,12 +224,13 @@ def save_open_positions_to_csv():
     df.to_csv(FILE_OPEN_POSITIONS, index=False, encoding="utf-8")
 
 def log_closed_trade(symbol, entry_p, exit_p, exit_reason, raw_pnl, raw_roe, entry_t, size_multiplier, forensics_data=""):
-    """Kapanan pay oranına göre komisyon hesaplar ve kısmi çıkışları alt alta yazar"""
     fee_rate = 0.001 
     total_fee_usd = (POSITION_SIZE_USD * size_multiplier) * fee_rate
     net_pnl = raw_pnl - total_fee_usd
     
-    exit_t = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # 🛡️ GÜVENLİ ZAMAN KULLANIMI
+    exit_t = get_tsi_time().strftime("%Y-%m-%d %H:%M:%S")
+    
     new_trade = {
         "Sembol": symbol.replace("/USDT:USDT", "USDT"),
         "Yön": "SHORT",
@@ -240,7 +244,7 @@ def log_closed_trade(symbol, entry_p, exit_p, exit_reason, raw_pnl, raw_roe, ent
         "Komisyon ($)": round(total_fee_usd, 2),
         "Net Kâr/Zarar ($)": round(net_pnl, 2),
         "ROE (%)": round(raw_roe, 2),
-        "Strateji Detayı": forensics_data # YENİ: Dinamik veriyi CSV'ye kaydet
+        "Strateji Detayı": forensics_data 
     }
     df = pd.DataFrame([new_trade])
     header_needed = not os.path.exists(FILE_TRADE_HISTORY)
@@ -254,7 +258,7 @@ def main():
     global last_btc_check, btc_is_bullish, last_macro_check
     exchange = create_exchange()
     
-    start_msg = "🤖 <b>V5.0 Kurumsal Sürüm Başlatıldı!</b>\n1h Trend Filtresi, Kademeli TP1, Breakeven Motoru ve Forensics Verileri aktif."
+    start_msg = "🤖 <b>V5.0 Kurumsal Sürüm Başlatıldı!</b>\n1h Trend Filtresi, TSİ Zaman Senkronizasyonu ve Canlı İptal Motoru aktif."
     send_telegram_message(start_msg)
     print("V5.0 Çalışıyor. Kurumsal simülasyon başladı...")
     
@@ -281,16 +285,16 @@ def main():
             last_macro_check = now
 
         # ========================================================
-        # AŞAMA 1: AÇIK POZİSYONLARI YÖNET (V5.0 CANLI FİYAT MOTORU)
+        # AŞAMA 1: AÇIK POZİSYONLARI YÖNET (CANLI FİYAT İLE)
         # ========================================================
         for symbol in list(open_positions.keys()):
             try:
                 df_1m = fetch_data(exchange, symbol, TF_TRIGGER)
                 if df_1m is None or len(df_1m) < 5: continue
                 
-                # ÇIKIŞ İŞLEMLERİ İÇİN KAPANMIŞ MUM DEĞİL, CANLI FİYAT KULLANILIR!
+                # Canlı Ticker/Fiyat verisi (O anki fiyat)
                 live_candle = df_1m.iloc[-1]
-                current_price = live_candle["close"] 
+                current_price = round(live_candle["close"], 6)
                 
                 pos = open_positions[symbol]
                 pos["current_price"] = current_price
@@ -300,7 +304,7 @@ def main():
                 pos["current_pnl"] = price_diff_pct * (POSITION_SIZE_USD * size_multiplier)
                 pos["current_roe"] = price_diff_pct * 100 * LEVERAGE
 
-                # A) STOP LOSS / BREAKEVEN KONTROLÜ (Canlı Fiyat ile)
+                # A) STOP LOSS / BREAKEVEN
                 if current_price >= pos["sl_price"]:
                     exit_price = pos["sl_price"]
                     pnl = ((pos["entry_price"] - exit_price) / pos["entry_price"]) * (POSITION_SIZE_USD * size_multiplier)
@@ -314,7 +318,7 @@ def main():
                     del open_positions[symbol]
                     continue
 
-                # B) TAKE PROFIT 1 KONTROLÜ (Canlı Fiyat ile)
+                # B) TAKE PROFIT 1
                 if not pos["tp1_hit"] and current_price <= pos["tp1_price"]:
                     exit_price = pos["tp1_price"]
                     pnl = ((pos["entry_price"] - exit_price) / pos["entry_price"]) * (POSITION_SIZE_USD * 0.5)
@@ -329,7 +333,7 @@ def main():
                     pos["sl_price"] = pos["entry_price"] 
                     continue
 
-                # C) TAKE PROFIT 2 KONTROLÜ (Canlı Fiyat ile)
+                # C) TAKE PROFIT 2
                 if pos["tp1_hit"] and current_price <= pos["tp2_price"]:
                     exit_price = pos["tp2_price"]
                     pnl = ((pos["entry_price"] - exit_price) / pos["entry_price"]) * (POSITION_SIZE_USD * 0.5)
@@ -338,12 +342,14 @@ def main():
                     log_closed_trade(symbol, pos["entry_price"], exit_price, "TAKE PROFIT 2 (NİHAİ %50)", pnl, roe, pos["entry_time"], 0.5, pos.get("forensics", ""))
                     
                     net_pnl = pnl - (POSITION_SIZE_USD * 0.5 * 0.001)
-                    send_telegram_message(f"💰 <b>TP2 NİHAİ HEDEF ALINDI: {symbol.replace('/USDT:USDT','USDT')}</b>\nKâr (Net): ${round(net_pnl, 2)}\n💼 Pozisyon tamamen başarıyla kapandı!")
+                    send_telegram_message(f"💰 <b>TP2 NİHAİ HEDEF ALINDI: {symbol.replace('/USDT:USDT','USDT')}</b>\nKâr (Net): ${round(net_pnl, 2)}\n💼 Pozisyon başarıyla kapandı!")
                     del open_positions[symbol]
                     continue
                     
-            except Exception:
+            except Exception as e:
                 pass
+
+        save_open_positions_to_csv()
 
         # ========================================================
         # AŞAMA 2: SİNYAL VE TETİKLEYİCİ TARAMASI
@@ -365,35 +371,37 @@ def main():
                     if df_1m is None or len(df_1m) < 25: continue
                     
                     df_1m = add_indicators(df_1m).dropna().reset_index(drop=True)
+                    live_1m = df_1m.iloc[-1]
                     last_1m = df_1m.iloc[-2]
                     
-                    # TUZAK İPTALİ
-                    if last_1m["high"] > setup["high_5m"]:
-                        print(f"🚫 {symbol} Invalidation tetiklendi, setup iptal.")
+                    # 🛡️ GÜÇLENDİRİLMİŞ İPTAL (INVALIDATION): Hem kapanmış hem canlı mum kontrolü
+                    if live_1m["high"] > setup["high_5m"] or last_1m["high"] > setup["high_5m"]:
+                        print(f"🚫 {symbol} Invalidation tetiklendi (Tepe aşıldı). Kurulum iptal.")
                         del active_setups[symbol]
                         continue
                     
-                    # SERT HACİM FİLTRESİ
                     volume_ok = last_1m["volume"] > (last_1m["volume_ma_20"] * 1.5)
                     
                     if (last_1m["close"] < last_1m["open"]) and (last_1m["close"] < last_1m["ema_7"]) and volume_ok:
-                        entry_price = last_1m["close"]
+                        entry_price = round(last_1m["close"], 6)
                         atr = setup["atr_5m"]
                         
-                        sl_price = entry_price + (atr * ATR_SL_MULTIPLIER)
-                        tp1_price = entry_price - (atr * ATR_TP1_MULTIPLIER)
-                        tp2_price = entry_price - (atr * ATR_TP2_MULTIPLIER)
+                        sl_price = round(entry_price + (atr * ATR_SL_MULTIPLIER), 6)
+                        tp1_price = round(entry_price - (atr * ATR_TP1_MULTIPLIER), 6)
+                        tp2_price = round(entry_price - (atr * ATR_TP2_MULTIPLIER), 6)
                         
                         if (sl_price - entry_price) / entry_price > 0.025:
                             del active_setups[symbol]
                             continue
 
-                        # DİNAMİK FORENSICS BİLGİSİNİ OLUŞTUR
                         hacim_carpani = last_1m["volume"] / last_1m["volume_ma_20"]
                         forensics_metni = f"RSI: {setup['rsi_5m']:.1f} | BB Pzt: {setup['bb_5m']:.2f} | EMA25'ten Kopuş: %{setup['ema_dist_5m']:.2f} | 1m Hacim Gücü: {hacim_carpani:.1f}x"
 
+                        # 🛡️ GÜVENLİ ZAMAN KULLANIMI
+                        entry_time_str = get_tsi_time().strftime("%Y-%m-%d %H:%M:%S")
+
                         open_positions[symbol] = {
-                            "entry_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                            "entry_time": entry_time_str,
                             "entry_price": entry_price,
                             "sl_price": sl_price,
                             "tp1_price": tp1_price,
