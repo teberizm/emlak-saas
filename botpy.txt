@@ -55,7 +55,6 @@ FILE_TRADE_HISTORY = "islem_gecmisi.csv"
 # 🛠 YARDIMCI FONKSİYONLAR
 # ==========================================
 
-# 🛡️ GÜVENLİ TÜRKİYE SAATİ (UTC+3) FONKSİYONU
 def get_tsi_time():
     return datetime.now(timezone.utc) + timedelta(hours=3)
 
@@ -66,6 +65,8 @@ def create_exchange():
     })
 
 def send_telegram_message(message):
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        return # Token yoksa hata verme, sessizce geç
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "HTML"}
     try:
@@ -228,7 +229,6 @@ def log_closed_trade(symbol, entry_p, exit_p, exit_reason, raw_pnl, raw_roe, ent
     total_fee_usd = (POSITION_SIZE_USD * size_multiplier) * fee_rate
     net_pnl = raw_pnl - total_fee_usd
     
-    # 🛡️ GÜVENLİ ZAMAN KULLANIMI
     exit_t = get_tsi_time().strftime("%Y-%m-%d %H:%M:%S")
     
     new_trade = {
@@ -255,10 +255,13 @@ def log_closed_trade(symbol, entry_p, exit_p, exit_reason, raw_pnl, raw_roe, ent
 # ==========================================
 
 def main():
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        print("\n⚠️ DİKKAT: Telegram Token veya Chat ID boş! Bildirimler KAPALI.\n")
+
     global last_btc_check, btc_is_bullish, last_macro_check
     exchange = create_exchange()
     
-    start_msg = "🤖 <b>V5.0 Kurumsal Sürüm Başlatıldı!</b>\n1h Trend Filtresi, TSİ Zaman Senkronizasyonu ve Canlı İptal Motoru aktif."
+    start_msg = "🤖 <b>V5.0 Kurumsal Sürüm Başlatıldı!</b>\nHigh/Low Fitil Koruyucusu ve TSİ Zaman Senkronizasyonu aktif."
     send_telegram_message(start_msg)
     print("V5.0 Çalışıyor. Kurumsal simülasyon başladı...")
     
@@ -285,16 +288,18 @@ def main():
             last_macro_check = now
 
         # ========================================================
-        # AŞAMA 1: AÇIK POZİSYONLARI YÖNET (CANLI FİYAT İLE)
+        # AŞAMA 1: AÇIK POZİSYONLARI YÖNET (FİTİL KONTROLÜ EKLENDİ)
         # ========================================================
         for symbol in list(open_positions.keys()):
             try:
                 df_1m = fetch_data(exchange, symbol, TF_TRIGGER)
                 if df_1m is None or len(df_1m) < 5: continue
                 
-                # Canlı Ticker/Fiyat verisi (O anki fiyat)
+                # Canlı mumun hem fiyatını hem de iğnelerini (High/Low) al
                 live_candle = df_1m.iloc[-1]
                 current_price = round(live_candle["close"], 6)
+                live_high = round(live_candle["high"], 6)
+                live_low = round(live_candle["low"], 6)
                 
                 pos = open_positions[symbol]
                 pos["current_price"] = current_price
@@ -304,8 +309,8 @@ def main():
                 pos["current_pnl"] = price_diff_pct * (POSITION_SIZE_USD * size_multiplier)
                 pos["current_roe"] = price_diff_pct * 100 * LEVERAGE
 
-                # A) STOP LOSS / BREAKEVEN
-                if current_price >= pos["sl_price"]:
+                # 🔴 A) STOP LOSS / BREAKEVEN (Fitil kontrolü ile)
+                if current_price >= pos["sl_price"] or live_high >= pos["sl_price"]:
                     exit_price = pos["sl_price"]
                     pnl = ((pos["entry_price"] - exit_price) / pos["entry_price"]) * (POSITION_SIZE_USD * size_multiplier)
                     roe = ((pos["entry_price"] - exit_price) / pos["entry_price"]) * 100 * LEVERAGE
@@ -318,8 +323,8 @@ def main():
                     del open_positions[symbol]
                     continue
 
-                # B) TAKE PROFIT 1
-                if not pos["tp1_hit"] and current_price <= pos["tp1_price"]:
+                # 🟢 B) TAKE PROFIT 1 (Fitil kontrolü ile)
+                elif not pos["tp1_hit"] and (current_price <= pos["tp1_price"] or live_low <= pos["tp1_price"]):
                     exit_price = pos["tp1_price"]
                     pnl = ((pos["entry_price"] - exit_price) / pos["entry_price"]) * (POSITION_SIZE_USD * 0.5)
                     roe = ((pos["entry_price"] - exit_price) / pos["entry_price"]) * 100 * LEVERAGE
@@ -333,8 +338,8 @@ def main():
                     pos["sl_price"] = pos["entry_price"] 
                     continue
 
-                # C) TAKE PROFIT 2
-                if pos["tp1_hit"] and current_price <= pos["tp2_price"]:
+                # 🟢 C) TAKE PROFIT 2 (Fitil kontrolü ile)
+                elif pos["tp1_hit"] and (current_price <= pos["tp2_price"] or live_low <= pos["tp2_price"]):
                     exit_price = pos["tp2_price"]
                     pnl = ((pos["entry_price"] - exit_price) / pos["entry_price"]) * (POSITION_SIZE_USD * 0.5)
                     roe = ((pos["entry_price"] - exit_price) / pos["entry_price"]) * 100 * LEVERAGE
@@ -347,7 +352,7 @@ def main():
                     continue
                     
             except Exception as e:
-                pass
+                print(f"⚠️ Pozisyon Yönetim Hatası ({symbol}): {e}")
 
         save_open_positions_to_csv()
 
@@ -359,7 +364,6 @@ def main():
             if symbol in last_signal_time and now - last_signal_time[symbol] < COOLDOWN_SECONDS: continue
 
             try:
-                # ONAY BEKLEYENLER (1m GRAFİK)
                 if symbol in active_setups:
                     setup = active_setups[symbol]
                     
@@ -374,7 +378,6 @@ def main():
                     live_1m = df_1m.iloc[-1]
                     last_1m = df_1m.iloc[-2]
                     
-                    # 🛡️ GÜÇLENDİRİLMİŞ İPTAL (INVALIDATION): Hem kapanmış hem canlı mum kontrolü
                     if live_1m["high"] > setup["high_5m"] or last_1m["high"] > setup["high_5m"]:
                         print(f"🚫 {symbol} Invalidation tetiklendi (Tepe aşıldı). Kurulum iptal.")
                         del active_setups[symbol]
@@ -394,10 +397,9 @@ def main():
                             del active_setups[symbol]
                             continue
 
-                        hacim_carpani = last_1m["volume"] / last_1m["volume_ma_20"]
+                        hacim_carpani = last_1m["volume_ratio_20"]
                         forensics_metni = f"RSI: {setup['rsi_5m']:.1f} | BB Pzt: {setup['bb_5m']:.2f} | EMA25'ten Kopuş: %{setup['ema_dist_5m']:.2f} | 1m Hacim Gücü: {hacim_carpani:.1f}x"
 
-                        # 🛡️ GÜVENLİ ZAMAN KULLANIMI
                         entry_time_str = get_tsi_time().strftime("%Y-%m-%d %H:%M:%S")
 
                         open_positions[symbol] = {
@@ -431,7 +433,6 @@ def main():
                         del active_setups[symbol]
                     continue
                 
-                # YENİ KURULUM ARAMA (5m GRAFİK)
                 if btc_is_bullish: continue
 
                 if not check_1h_macro_trend(exchange, symbol):
@@ -452,8 +453,9 @@ def main():
                     }
                     print(f"🎯 5m Kurulum Yakalandı: {symbol}")
                     
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"⚠️ Tarama Hatası ({symbol}): {e}")
+            
             time.sleep(0.2)
 
         time.sleep(2)
