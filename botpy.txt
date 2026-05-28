@@ -17,30 +17,23 @@ LIMIT = 120
 TOP_SYMBOL_LIMIT = 30
 SYMBOL_UPDATE_INTERVAL = 5 * 60
 
-# Zaman Dilimleri
 TF_MACRO = "1h"      
 TF_SETUP = "5m"      
 TF_TRIGGER = "1m"    
 
-# Sinyal Ayarları
 WATCH_MINUTES = 15   
 COOLDOWN_SECONDS = 30 * 60 
 
-# KADEMELİ ATR ÇARPANLARI
 ATR_SL_MULTIPLIER = 1.2   
 ATR_TP1_MULTIPLIER = 1.0  
 ATR_TP2_MULTIPLIER = 2.2  
 
-# SİMÜLASYON KASASI
 MARGIN_USD = 100.0   
 LEVERAGE = 10        
 POSITION_SIZE_USD = MARGIN_USD * LEVERAGE 
 
 BLACKLIST_COINS = ["BTC/USDT:USDT", "ETH/USDT:USDT", "USDC/USDT:USDT", "FDUSD/USDT:USDT"]
 
-# ==========================================
-# 🧠 BELLEK VE DOSYA YÖNETİMİ
-# ==========================================
 active_setups = {}
 open_positions = {}
 last_signal_time = {}
@@ -48,12 +41,9 @@ last_btc_check = 0
 last_macro_check = 0 
 btc_is_bullish = False
 
-FILE_OPEN_POSITIONS = "acik_islemler.csv"
-FILE_TRADE_HISTORY = "islem_gecmisi.csv"
-
-# ==========================================
-# 🛠 YARDIMCI FONKSİYONLAR
-# ==========================================
+# YENİ VE TEMİZ VERİ DOSYALARI (V5 FORMATI)
+FILE_OPEN_POSITIONS = "acik_islemler_v5.csv"
+FILE_TRADE_HISTORY = "islem_gecmisi_v5.csv"
 
 def get_tsi_time():
     return datetime.now(timezone.utc) + timedelta(hours=3)
@@ -66,7 +56,7 @@ def create_exchange():
 
 def send_telegram_message(message):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        return # Token yoksa hata verme, sessizce geç
+        return 
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "HTML"}
     try:
@@ -135,10 +125,6 @@ def check_macro_news():
     except Exception:
         return []
 
-# ==========================================
-# 📊 İNDİKATÖRLER VE ÖZELLİK ÇIKARIMI
-# ==========================================
-
 def add_indicators(df):
     df = df.copy()
     df["ema_7"] = df["close"].ewm(span=7, adjust=False).mean()
@@ -196,10 +182,6 @@ def is_short_exhaustion_5m(f):
         f["ema_25_dist_pct"] > 1.2           
     )
 
-# ==========================================
-# 📒 MUHASEBE VE RAPORLAMA MOTORU
-# ==========================================
-
 def save_open_positions_to_csv():
     if not open_positions:
         if os.path.exists(FILE_OPEN_POSITIONS):
@@ -250,10 +232,6 @@ def log_closed_trade(symbol, entry_p, exit_p, exit_reason, raw_pnl, raw_roe, ent
     header_needed = not os.path.exists(FILE_TRADE_HISTORY)
     df.to_csv(FILE_TRADE_HISTORY, mode="a", index=False, header=header_needed, encoding="utf-8")
 
-# ==========================================
-# 🚀 ANA MOTOR DÖNGÜSÜ
-# ==========================================
-
 def main():
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("\n⚠️ DİKKAT: Telegram Token veya Chat ID boş! Bildirimler KAPALI.\n")
@@ -261,7 +239,7 @@ def main():
     global last_btc_check, btc_is_bullish, last_macro_check
     exchange = create_exchange()
     
-    start_msg = "🤖 <b>V5.0 Kurumsal Sürüm Başlatıldı!</b>\nHigh/Low Fitil Koruyucusu ve TSİ Zaman Senkronizasyonu aktif."
+    start_msg = "🤖 <b>V5.0 Kurumsal Sürüm Başlatıldı!</b>\nTemiz CSV Motoru, Canlı Fiyat İzleme ve Kusursuz İptal Aktif."
     send_telegram_message(start_msg)
     print("V5.0 Çalışıyor. Kurumsal simülasyon başladı...")
     
@@ -288,18 +266,13 @@ def main():
             last_macro_check = now
 
         # ========================================================
-        # AŞAMA 1: AÇIK POZİSYONLARI YÖNET (FİTİL KONTROLÜ EKLENDİ)
+        # AŞAMA 1: AÇIK POZİSYONLARI YÖNET
         # ========================================================
         for symbol in list(open_positions.keys()):
             try:
-                df_1m = fetch_data(exchange, symbol, TF_TRIGGER)
-                if df_1m is None or len(df_1m) < 5: continue
-                
-                # Canlı mumun hem fiyatını hem de iğnelerini (High/Low) al
-                live_candle = df_1m.iloc[-1]
-                current_price = round(live_candle["close"], 6)
-                live_high = round(live_candle["high"], 6)
-                live_low = round(live_candle["low"], 6)
+                # Kesin ve canlı son fiyatı almak için Ticker kullanıyoruz
+                ticker = exchange.fetch_ticker(symbol)
+                current_price = round(ticker['last'], 6)
                 
                 pos = open_positions[symbol]
                 pos["current_price"] = current_price
@@ -309,8 +282,8 @@ def main():
                 pos["current_pnl"] = price_diff_pct * (POSITION_SIZE_USD * size_multiplier)
                 pos["current_roe"] = price_diff_pct * 100 * LEVERAGE
 
-                # 🔴 A) STOP LOSS / BREAKEVEN (Fitil kontrolü ile)
-                if current_price >= pos["sl_price"] or live_high >= pos["sl_price"]:
+                # 🔴 A) STOP LOSS / BREAKEVEN (Sadece canlı fiyat)
+                if current_price >= pos["sl_price"]:
                     exit_price = pos["sl_price"]
                     pnl = ((pos["entry_price"] - exit_price) / pos["entry_price"]) * (POSITION_SIZE_USD * size_multiplier)
                     roe = ((pos["entry_price"] - exit_price) / pos["entry_price"]) * 100 * LEVERAGE
@@ -323,8 +296,8 @@ def main():
                     del open_positions[symbol]
                     continue
 
-                # 🟢 B) TAKE PROFIT 1 (Fitil kontrolü ile)
-                elif not pos["tp1_hit"] and (current_price <= pos["tp1_price"] or live_low <= pos["tp1_price"]):
+                # 🟢 B) TAKE PROFIT 1 (Sadece canlı fiyat)
+                elif not pos["tp1_hit"] and current_price <= pos["tp1_price"]:
                     exit_price = pos["tp1_price"]
                     pnl = ((pos["entry_price"] - exit_price) / pos["entry_price"]) * (POSITION_SIZE_USD * 0.5)
                     roe = ((pos["entry_price"] - exit_price) / pos["entry_price"]) * 100 * LEVERAGE
@@ -338,8 +311,8 @@ def main():
                     pos["sl_price"] = pos["entry_price"] 
                     continue
 
-                # 🟢 C) TAKE PROFIT 2 (Fitil kontrolü ile)
-                elif pos["tp1_hit"] and (current_price <= pos["tp2_price"] or live_low <= pos["tp2_price"]):
+                # 🟢 C) TAKE PROFIT 2 (Sadece canlı fiyat)
+                elif pos["tp1_hit"] and current_price <= pos["tp2_price"]:
                     exit_price = pos["tp2_price"]
                     pnl = ((pos["entry_price"] - exit_price) / pos["entry_price"]) * (POSITION_SIZE_USD * 0.5)
                     roe = ((pos["entry_price"] - exit_price) / pos["entry_price"]) * 100 * LEVERAGE
