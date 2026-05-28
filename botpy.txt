@@ -41,7 +41,6 @@ last_btc_check = 0
 last_macro_check = 0 
 btc_is_bullish = False
 
-# YENİ VE TEMİZ VERİ DOSYALARI (V5 FORMATI)
 FILE_OPEN_POSITIONS = "acik_islemler_v5.csv"
 FILE_TRADE_HISTORY = "islem_gecmisi_v5.csv"
 
@@ -239,9 +238,9 @@ def main():
     global last_btc_check, btc_is_bullish, last_macro_check
     exchange = create_exchange()
     
-    start_msg = "🤖 <b>V5.0 Kurumsal Sürüm Başlatıldı!</b>\nTemiz CSV Motoru, Canlı Fiyat İzleme ve Kusursuz İptal Aktif."
+    start_msg = "🤖 <b>V5.0 Kurumsal Sürüm Başlatıldı!</b>\n🎯 Sniper (Odaklanma) Modu aktif. Sinyal geldiğinde tarama durdurulur ve saniyelik takibe geçilir."
     send_telegram_message(start_msg)
-    print("V5.0 Çalışıyor. Kurumsal simülasyon başladı...")
+    print("V5.0 Sniper Modu Çalışıyor...")
     
     symbols = []
     last_symbol_update = 0
@@ -266,74 +265,77 @@ def main():
             last_macro_check = now
 
         # ========================================================
-        # AŞAMA 1: AÇIK POZİSYONLARI YÖNET
+        # AŞAMA 1: AÇIK POZİSYONLARI YÖNET (SNIPER MODU)
         # ========================================================
-        for symbol in list(open_positions.keys()):
-            try:
-                # Kesin ve canlı son fiyatı almak için Ticker kullanıyoruz
-                ticker = exchange.fetch_ticker(symbol)
-                current_price = round(ticker['last'], 6)
-                
-                pos = open_positions[symbol]
-                pos["current_price"] = current_price
-                
-                size_multiplier = 0.5 if pos["tp1_hit"] else 1.0
-                price_diff_pct = (pos["entry_price"] - current_price) / pos["entry_price"]
-                pos["current_pnl"] = price_diff_pct * (POSITION_SIZE_USD * size_multiplier)
-                pos["current_roe"] = price_diff_pct * 100 * LEVERAGE
+        if len(open_positions) > 0:
+            for symbol in list(open_positions.keys()):
+                try:
+                    ticker = exchange.fetch_ticker(symbol)
+                    current_price = round(ticker['last'], 6)
+                    
+                    pos = open_positions[symbol]
+                    pos["current_price"] = current_price
+                    
+                    size_multiplier = 0.5 if pos["tp1_hit"] else 1.0
+                    price_diff_pct = (pos["entry_price"] - current_price) / pos["entry_price"]
+                    pos["current_pnl"] = price_diff_pct * (POSITION_SIZE_USD * size_multiplier)
+                    pos["current_roe"] = price_diff_pct * 100 * LEVERAGE
 
-                # 🔴 A) STOP LOSS / BREAKEVEN (Sadece canlı fiyat)
-                if current_price >= pos["sl_price"]:
-                    exit_price = pos["sl_price"]
-                    pnl = ((pos["entry_price"] - exit_price) / pos["entry_price"]) * (POSITION_SIZE_USD * size_multiplier)
-                    roe = ((pos["entry_price"] - exit_price) / pos["entry_price"]) * 100 * LEVERAGE
-                    
-                    reason = "BREAKEVEN (GİRİŞTE STOP)" if pos["tp1_hit"] else "STOP LOSS"
-                    log_closed_trade(symbol, pos["entry_price"], exit_price, reason, pnl, roe, pos["entry_time"], size_multiplier, pos.get("forensics", ""))
-                    
-                    net_pnl = pnl - (POSITION_SIZE_USD * size_multiplier * 0.001)
-                    send_telegram_message(f"🛑 <b>{reason}: {symbol.replace('/USDT:USDT','USDT')}</b>\nPnL (Net): ${round(net_pnl, 2)}")
-                    del open_positions[symbol]
-                    continue
+                    # A) STOP LOSS / BREAKEVEN
+                    if current_price >= pos["sl_price"]:
+                        exit_price = pos["sl_price"]
+                        pnl = ((pos["entry_price"] - exit_price) / pos["entry_price"]) * (POSITION_SIZE_USD * size_multiplier)
+                        roe = ((pos["entry_price"] - exit_price) / pos["entry_price"]) * 100 * LEVERAGE
+                        
+                        reason = "BREAKEVEN (GİRİŞTE STOP)" if pos["tp1_hit"] else "STOP LOSS"
+                        log_closed_trade(symbol, pos["entry_price"], exit_price, reason, pnl, roe, pos["entry_time"], size_multiplier, pos.get("forensics", ""))
+                        
+                        net_pnl = pnl - (POSITION_SIZE_USD * size_multiplier * 0.001)
+                        send_telegram_message(f"🛑 <b>{reason}: {symbol.replace('/USDT:USDT','USDT')}</b>\nPnL (Net): ${round(net_pnl, 2)}")
+                        del open_positions[symbol]
+                        continue
 
-                # 🟢 B) TAKE PROFIT 1 (Sadece canlı fiyat)
-                elif not pos["tp1_hit"] and current_price <= pos["tp1_price"]:
-                    exit_price = pos["tp1_price"]
-                    pnl = ((pos["entry_price"] - exit_price) / pos["entry_price"]) * (POSITION_SIZE_USD * 0.5)
-                    roe = ((pos["entry_price"] - exit_price) / pos["entry_price"]) * 100 * LEVERAGE
-                    
-                    log_closed_trade(symbol, pos["entry_price"], exit_price, "TAKE PROFIT 1 (%50)", pnl, roe, pos["entry_time"], 0.5, pos.get("forensics", ""))
-                    
-                    net_pnl = pnl - (POSITION_SIZE_USD * 0.5 * 0.001)
-                    send_telegram_message(f"🎯 <b>TP1 ALINDI (%50): {symbol.replace('/USDT:USDT','USDT')}</b>\nKâr (Net): ${round(net_pnl, 2)}\n👉 Stop Loss Giriş Fiyatına Çekildi.")
-                    
-                    pos["tp1_hit"] = True
-                    pos["sl_price"] = pos["entry_price"] 
-                    continue
+                    # B) TAKE PROFIT 1
+                    elif not pos["tp1_hit"] and current_price <= pos["tp1_price"]:
+                        exit_price = pos["tp1_price"]
+                        pnl = ((pos["entry_price"] - exit_price) / pos["entry_price"]) * (POSITION_SIZE_USD * 0.5)
+                        roe = ((pos["entry_price"] - exit_price) / pos["entry_price"]) * 100 * LEVERAGE
+                        
+                        log_closed_trade(symbol, pos["entry_price"], exit_price, "TAKE PROFIT 1 (%50)", pnl, roe, pos["entry_time"], 0.5, pos.get("forensics", ""))
+                        
+                        net_pnl = pnl - (POSITION_SIZE_USD * 0.5 * 0.001)
+                        send_telegram_message(f"🎯 <b>TP1 ALINDI (%50): {symbol.replace('/USDT:USDT','USDT')}</b>\nKâr (Net): ${round(net_pnl, 2)}\n👉 Stop Loss Giriş Fiyatına Çekildi.")
+                        
+                        pos["tp1_hit"] = True
+                        pos["sl_price"] = pos["entry_price"] 
+                        continue
 
-                # 🟢 C) TAKE PROFIT 2 (Sadece canlı fiyat)
-                elif pos["tp1_hit"] and current_price <= pos["tp2_price"]:
-                    exit_price = pos["tp2_price"]
-                    pnl = ((pos["entry_price"] - exit_price) / pos["entry_price"]) * (POSITION_SIZE_USD * 0.5)
-                    roe = ((pos["entry_price"] - exit_price) / pos["entry_price"]) * 100 * LEVERAGE
-                    
-                    log_closed_trade(symbol, pos["entry_price"], exit_price, "TAKE PROFIT 2 (NİHAİ %50)", pnl, roe, pos["entry_time"], 0.5, pos.get("forensics", ""))
-                    
-                    net_pnl = pnl - (POSITION_SIZE_USD * 0.5 * 0.001)
-                    send_telegram_message(f"💰 <b>TP2 NİHAİ HEDEF ALINDI: {symbol.replace('/USDT:USDT','USDT')}</b>\nKâr (Net): ${round(net_pnl, 2)}\n💼 Pozisyon başarıyla kapandı!")
-                    del open_positions[symbol]
-                    continue
-                    
-            except Exception as e:
-                print(f"⚠️ Pozisyon Yönetim Hatası ({symbol}): {e}")
+                    # C) TAKE PROFIT 2
+                    elif pos["tp1_hit"] and current_price <= pos["tp2_price"]:
+                        exit_price = pos["tp2_price"]
+                        pnl = ((pos["entry_price"] - exit_price) / pos["entry_price"]) * (POSITION_SIZE_USD * 0.5)
+                        roe = ((pos["entry_price"] - exit_price) / pos["entry_price"]) * 100 * LEVERAGE
+                        
+                        log_closed_trade(symbol, pos["entry_price"], exit_price, "TAKE PROFIT 2 (NİHAİ %50)", pnl, roe, pos["entry_time"], 0.5, pos.get("forensics", ""))
+                        
+                        net_pnl = pnl - (POSITION_SIZE_USD * 0.5 * 0.001)
+                        send_telegram_message(f"💰 <b>TP2 NİHAİ HEDEF ALINDI: {symbol.replace('/USDT:USDT','USDT')}</b>\nKâr (Net): ${round(net_pnl, 2)}\n💼 Pozisyon başarıyla kapandı!")
+                        del open_positions[symbol]
+                        continue
+                        
+                except Exception as e:
+                    print(f"⚠️ Pozisyon Yönetim Hatası ({symbol}): {e}")
 
-        save_open_positions_to_csv()
+            save_open_positions_to_csv()
+            
+            # 🔥 SNIPER MODU MANTIĞI: Açık işlem varsa tarama yapma, 1 saniye bekle ve döngüyü başa sar!
+            time.sleep(1)
+            continue 
 
         # ========================================================
-        # AŞAMA 2: SİNYAL VE TETİKLEYİCİ TARAMASI
+        # AŞAMA 2: SİNYAL VE TETİKLEYİCİ TARAMASI (SADECE AÇIK İŞLEM YOKSA ÇALIŞIR)
         # ========================================================
         for symbol in symbols:
-            if symbol in open_positions: continue
             if symbol in last_signal_time and now - last_signal_time[symbol] < COOLDOWN_SECONDS: continue
 
             try:
