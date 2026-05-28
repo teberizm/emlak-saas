@@ -13,7 +13,6 @@ st.set_page_config(
     layout="wide"
 )
 
-# Dark Neon Custom CSS
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Urbanist:wght@400;600;700&display=swap');
@@ -42,9 +41,9 @@ st.markdown("""
     </style>
     """, unsafe_allow_stdio=True)
 
-# --- DOSYA YOLLARI ---
-FILE_OPEN = "acik_islemler.csv"
-FILE_HISTORY = "islem_gecmisi.csv"
+# YENİ VE TEMİZ VERİ DOSYALARI (V5 FORMATI)
+FILE_OPEN = "acik_islemler_v5.csv"
+FILE_HISTORY = "islem_gecmisi_v5.csv"
 
 # ==========================================
 # 📊 VERİ YÜKLEME VE HESAPLAMA MOTORU
@@ -58,9 +57,7 @@ def load_data(file):
 def calculate_max_loss_streak(df):
     if df.empty: return 0
     df = df.copy()
-    # Zarar edenleri 1, kâr eden (veya 0) olanları 0 olarak işaretle
     df['is_loss'] = (df['Net Kâr/Zarar ($)'] < 0).astype(int)
-    # Ardışık kayıpları say
     streaks = df['is_loss'] * (df['is_loss'].groupby((df['is_loss'] != df['is_loss'].shift()).cumsum()).cumcount() + 1)
     return streaks.max()
 
@@ -78,16 +75,13 @@ if not df_history.empty:
     total_net_pnl = df_history["Net Kâr/Zarar ($)"].sum()
     total_trades = len(df_history)
     
-    # Profit Factor
     total_gains = df_history[df_history["Net Kâr/Zarar ($)"] > 0]["Net Kâr/Zarar ($)"].sum()
     total_losses = abs(df_history[df_history["Net Kâr/Zarar ($)"] < 0]["Net Kâr/Zarar ($)"].sum())
     profit_factor = round(total_gains / total_losses, 2) if total_losses > 0 else "∞"
     
-    # Win Rate
     win_count = len(df_history[df_history["Net Kâr/Zarar ($)"] > 0])
     win_rate = round((win_count / total_trades) * 100, 1)
     
-    # Max Loss Streak
     loss_streak = calculate_max_loss_streak(df_history)
 
     m1, m2, m3, m4, m5 = st.columns(5)
@@ -163,8 +157,6 @@ with tab2:
         df_sorted = df_history.iloc[::-1]
         
         for index, row in df_sorted.iterrows():
-            
-            # GÜNCELLEME: Başlıkta Giriş ve Çıkış zamanlarını aynı anda gösteriyoruz
             baslik = f"{row['Sembol']} | Giriş: {row['Giriş Zamanı']} ➔ Çıkış: {row['Çıkış Zamanı']} | Net PnL: ${row['Net Kâr/Zarar ($)']} | {row['Kapanış Nedeni']}"
             
             with st.expander(baslik):
@@ -172,11 +164,14 @@ with tab2:
                 c1.write(f"**Giriş Fiyatı:** {row['Giriş Fiyatı']}")
                 c1.write(f"**Çıkış Fiyatı:** {row['Çıkış Fiyatı']}")
                 
-                c2.write(f"**Brüt PnL:** ${row['Brüt PnL ($)']}")
-                c2.write(f"**Komisyon:** -${row['Komisyon ($)']}")
+                brut_pnl = row.get('Brüt PnL ($)', 0)
+                komisyon = row.get('Komisyon ($)', 0)
                 
-                c3.write(f"**Kapanan Pay:** {row['Kapanan Pay']}")
-                c3.write(f"**ROE:** %{row['ROE (%)']}")
+                c2.write(f"**Brüt PnL:** ${brut_pnl}")
+                c2.write(f"**Komisyon:** -${abs(komisyon)}")
+                
+                c3.write(f"**Kapanan Pay:** {row.get('Kapanan Pay', '')}")
+                c3.write(f"**ROE:** %{row.get('ROE (%)', '')}")
                 
                 st.markdown("---")
                 st.markdown(f"🔍 **GİRİŞ ANINDAKİ PİYASA VERİLERİ (FORENSICS):**")
@@ -202,7 +197,6 @@ with tab3:
         st.dataframe(leaderboard.style.map(color_lead, subset=['Net Kâr/Zarar ($)']), use_container_width=True)
         st.info("💡 Not: Sürekli zarar yazan (Kırmızı) coinleri botun içindeki BLACKLIST_COINS listesine ekleyerek performansı artırabilirsiniz.")
 
-# --- FOOTER ---
 st.markdown("---")
 st.markdown(f"<p style='text-align: center; opacity: 0.5;'>Project Apex V5.0 Dashboard | Son Güncelleme: {datetime.now().strftime('%H:%M:%S')}</p>", unsafe_allow_html=True)
 
