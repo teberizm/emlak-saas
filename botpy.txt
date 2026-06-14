@@ -24,8 +24,10 @@ TF_TRIGGER = "1m"
 WATCH_MINUTES = 15   
 COOLDOWN_SECONDS = 30 * 60 
 
+# KADEMELİ ÇARPANLAR (STEP MANTIĞI EKLENDİ)
 ATR_SL_MULTIPLIER = 1.2   
 ATR_TP1_MULTIPLIER = 1.0  
+ATR_STEP_MULTIPLIER = 1.6 # TP1 ile TP2'nin tam orta noktası
 ATR_TP2_MULTIPLIER = 2.2  
 
 MARGIN_USD = 100.0   
@@ -238,7 +240,7 @@ def main():
     global last_btc_check, btc_is_bullish, last_macro_check
     exchange = create_exchange()
     
-    start_msg = "🤖 <b>V5.0 Kurumsal Sürüm Başlatıldı!</b>\n🎯 Sniper (Odaklanma) Modu aktif. Sinyal geldiğinde tarama durdurulur ve saniyelik takibe geçilir."
+    start_msg = "🤖 <b>V5.0 Kurumsal Sürüm Başlatıldı!</b>\n🎯 Sniper Modu ve <b>Kademeli (Step) Trailing Stop</b> aktif."
     send_telegram_message(start_msg)
     print("V5.0 Sniper Modu Çalışıyor...")
     
@@ -265,7 +267,7 @@ def main():
             last_macro_check = now
 
         # ========================================================
-        # AŞAMA 1: AÇIK POZİSYONLARI YÖNET (SNIPER MODU)
+        # AŞAMA 1: AÇIK POZİSYONLARI YÖNET (SNIPER MODU VE STEP TRAILING)
         # ========================================================
         if len(open_positions) > 0:
             for symbol in list(open_positions.keys()):
@@ -281,21 +283,29 @@ def main():
                     pos["current_pnl"] = price_diff_pct * (POSITION_SIZE_USD * size_multiplier)
                     pos["current_roe"] = price_diff_pct * 100 * LEVERAGE
 
-                    # A) STOP LOSS / BREAKEVEN
+                    # A) DİNAMİK STOP LOSS KONTROLÜ (Giriş SL, Breakeven veya Kademeli Step Stop)
                     if current_price >= pos["sl_price"]:
                         exit_price = pos["sl_price"]
                         pnl = ((pos["entry_price"] - exit_price) / pos["entry_price"]) * (POSITION_SIZE_USD * size_multiplier)
                         roe = ((pos["entry_price"] - exit_price) / pos["entry_price"]) * 100 * LEVERAGE
                         
-                        reason = "BREAKEVEN (GİRİŞTE STOP)" if pos["tp1_hit"] else "STOP LOSS"
+                        # Kapanış nedenini duruma göre belirle
+                        if pos.get("step_hit", False):
+                            reason = "TAKE PROFIT 1 (TRAILING STOP)" # Dashboard yeşil yaksın diye TP ismi verdik
+                        elif pos["tp1_hit"]:
+                            reason = "BREAKEVEN (GİRİŞTE STOP)"
+                        else:
+                            reason = "STOP LOSS"
+                            
                         log_closed_trade(symbol, pos["entry_price"], exit_price, reason, pnl, roe, pos["entry_time"], size_multiplier, pos.get("forensics", ""))
                         
                         net_pnl = pnl - (POSITION_SIZE_USD * size_multiplier * 0.001)
-                        send_telegram_message(f"🛑 <b>{reason}: {symbol.replace('/USDT:USDT','USDT')}</b>\nPnL (Net): ${round(net_pnl, 2)}")
+                        mesaj_baslik = "🎯 <b>KADEMELİ KÂR (STEP STOP)</b>" if pos.get("step_hit", False) else f"🛑 <b>{reason}</b>"
+                        send_telegram_message(f"{mesaj_baslik}: {symbol.replace('/USDT:USDT','USDT')}\nPnL (Net): ${round(net_pnl, 2)}")
                         del open_positions[symbol]
                         continue
 
-                    # B) TAKE PROFIT 1
+                    # B) TAKE PROFIT 1 KONTROLÜ
                     elif not pos["tp1_hit"] and current_price <= pos["tp1_price"]:
                         exit_price = pos["tp1_price"]
                         pnl = ((pos["entry_price"] - exit_price) / pos["entry_price"]) * (POSITION_SIZE_USD * 0.5)
@@ -304,13 +314,13 @@ def main():
                         log_closed_trade(symbol, pos["entry_price"], exit_price, "TAKE PROFIT 1 (%50)", pnl, roe, pos["entry_time"], 0.5, pos.get("forensics", ""))
                         
                         net_pnl = pnl - (POSITION_SIZE_USD * 0.5 * 0.001)
-                        send_telegram_message(f"🎯 <b>TP1 ALINDI (%50): {symbol.replace('/USDT:USDT','USDT')}</b>\nKâr (Net): ${round(net_pnl, 2)}\n👉 Stop Loss Giriş Fiyatına Çekildi.")
+                        send_telegram_message(f"🎯 <b>TP1 ALINDI (%50): {symbol.replace('/USDT:USDT','USDT')}</b>\nKâr (Net): ${round(net_pnl, 2)}\n👉 Stop Loss Giriş Fiyatına (Breakeven) Çekildi.")
                         
                         pos["tp1_hit"] = True
-                        pos["sl_price"] = pos["entry_price"] 
+                        pos["sl_price"] = pos["entry_price"] # Stop girişe çekildi
                         continue
 
-                    # C) TAKE PROFIT 2
+                    # C) NİHAİ TP2 KONTROLÜ
                     elif pos["tp1_hit"] and current_price <= pos["tp2_price"]:
                         exit_price = pos["tp2_price"]
                         pnl = ((pos["entry_price"] - exit_price) / pos["entry_price"]) * (POSITION_SIZE_USD * 0.5)
@@ -322,18 +332,25 @@ def main():
                         send_telegram_message(f"💰 <b>TP2 NİHAİ HEDEF ALINDI: {symbol.replace('/USDT:USDT','USDT')}</b>\nKâr (Net): ${round(net_pnl, 2)}\n💼 Pozisyon başarıyla kapandı!")
                         del open_positions[symbol]
                         continue
+
+                    # D) KADEMELİ STEP STOP KONTROLÜ (YENİ - Fiyat ortayı geçtiyse Stop TP1'e çekilir)
+                    elif pos["tp1_hit"] and not pos.get("step_hit", False) and current_price <= pos["step_price"]:
+                        pos["step_hit"] = True
+                        pos["sl_price"] = pos["tp1_price"] # Stop artık TP1 seviyesinde
+                        send_telegram_message(f"🛡️ <b>KADEMELİ STOP AKTİF: {symbol.replace('/USDT:USDT','USDT')}</b>\nFiyat hedefin yarısını geçti! Stop Loss noktası kârı korumak için TP1 ({pos['tp1_price']}) seviyesine çekildi.")
+                        continue
                         
                 except Exception as e:
                     print(f"⚠️ Pozisyon Yönetim Hatası ({symbol}): {e}")
 
             save_open_positions_to_csv()
             
-            # 🔥 SNIPER MODU MANTIĞI: Açık işlem varsa tarama yapma, 1 saniye bekle ve döngüyü başa sar!
+            # 🔥 SNIPER MODU MANTIĞI
             time.sleep(1)
             continue 
 
         # ========================================================
-        # AŞAMA 2: SİNYAL VE TETİKLEYİCİ TARAMASI (SADECE AÇIK İŞLEM YOKSA ÇALIŞIR)
+        # AŞAMA 2: SİNYAL VE TETİKLEYİCİ TARAMASI
         # ========================================================
         for symbol in symbols:
             if symbol in last_signal_time and now - last_signal_time[symbol] < COOLDOWN_SECONDS: continue
@@ -364,8 +381,10 @@ def main():
                         entry_price = round(last_1m["close"], 6)
                         atr = setup["atr_5m"]
                         
+                        # FİYAT HEDEFLERİNİN BELİRLENMESİ
                         sl_price = round(entry_price + (atr * ATR_SL_MULTIPLIER), 6)
                         tp1_price = round(entry_price - (atr * ATR_TP1_MULTIPLIER), 6)
+                        step_price = round(entry_price - (atr * ATR_STEP_MULTIPLIER), 6) # YENİ: Orta Nokta
                         tp2_price = round(entry_price - (atr * ATR_TP2_MULTIPLIER), 6)
                         
                         if (sl_price - entry_price) / entry_price > 0.025:
@@ -382,8 +401,10 @@ def main():
                             "entry_price": entry_price,
                             "sl_price": sl_price,
                             "tp1_price": tp1_price,
+                            "step_price": step_price, # Orta nokta kaydedildi
                             "tp2_price": tp2_price,
                             "tp1_hit": False,
+                            "step_hit": False, # YENİ: Başlangıçta false
                             "current_price": entry_price,
                             "current_pnl": 0.0,
                             "current_roe": 0.0,
@@ -394,12 +415,14 @@ def main():
                         clean_s = symbol.replace("/USDT:USDT", "USDT")
                         sl_pct = ((sl_price - entry_price) / entry_price) * 100
                         tp1_pct = ((entry_price - tp1_price) / entry_price) * 100
+                        step_pct = ((entry_price - step_price) / entry_price) * 100
                         tp2_pct = ((entry_price - tp2_price) / entry_price) * 100
                         
                         msg = (f"🚀 <b>Kurumsal V5.0 İşlem Açıldı: {clean_s}</b>\n\n"
                                f"📍 Giriş: {entry_price:.5f}\n"
                                f"🛑 İlk SL (%{sl_pct:.2f}): {sl_price:.5f}\n"
                                f"🎯 Kısmi TP1 (%{tp1_pct:.2f}): {tp1_price:.5f}\n"
+                               f"🛡️ Step Noktası (%{step_pct:.2f}): {step_price:.5f}\n"
                                f"💰 Nihai TP2 (%{tp2_pct:.2f}): {tp2_price:.5f}\n\n"
                                f"💼 Toplam Büyüklük: {MARGIN_USD}$ x {LEVERAGE}x")
                         send_telegram_message(msg)
