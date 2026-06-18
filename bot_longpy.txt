@@ -1,0 +1,482 @@
+import ccxt
+import pandas as pd
+import requests
+import time
+import os
+import xml.etree.ElementTree as ET
+from datetime import datetime, timedelta, timezone
+
+# ==========================================
+# ⚙️ GENEL AYARLAR VE RİSK YÖNETİMİ
+# ==========================================
+TELEGRAM_BOT_TOKEN = "7691992593:AAF8vN8XgvKIZKIr78rwBRKWNz9jxqUOAX4"
+TELEGRAM_CHAT_ID = "1030590727"
+
+EXCHANGE_ID = "binance"
+LIMIT = 120
+TOP_SYMBOL_LIMIT = 30
+SYMBOL_UPDATE_INTERVAL = 5 * 60
+
+TF_MACRO = "1h"      
+TF_SETUP = "5m"      
+TF_TRIGGER = "1m"    
+
+WATCH_MINUTES = 25   # Dip sonrası nefes alma payı
+COOLDOWN_SECONDS = 30 * 60 
+
+# KADEMELİ ÇARPANLAR (STEP MANTIĞI ENTEGRE EDİLDİ)
+ATR_SL_MULTIPLIER = 1.2   
+ATR_TP1_MULTIPLIER = 1.0  
+ATR_STEP_MULTIPLIER = 1.6 # Orta Nokta
+ATR_TP2_MULTIPLIER = 2.2  
+
+MARGIN_USD = 100.0   
+LEVERAGE = 10        
+POSITION_SIZE_USD = MARGIN_USD * LEVERAGE 
+
+BLACKLIST_COINS = ["BTC/USDT:USDT", "ETH/USDT:USDT", "USDC/USDT:USDT", "FDUSD/USDT:USDT"]
+
+active_setups = {}
+open_positions = {}
+last_signal_time = {}
+last_btc_check = 0
+last_macro_check = 0 
+btc_is_bullish = False
+
+# DOSYA İSİMLERİ LONG İÇİN ÖZELLEŞTİRİLDİ
+FILE_OPEN_POSITIONS = "acik_islemler_long_v5.csv"
+FILE_TRADE_HISTORY = "islem_gecmisi_long_v5.csv"
+
+def get_tsi_time():
+    return datetime.now(timezone.utc) + timedelta(hours=3)
+
+def create_exchange():
+    return getattr(ccxt, EXCHANGE_ID)({
+        "enableRateLimit": True,
+        "options": {"defaultType": "future"}
+    })
+
+def send_telegram_message(message):
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        return 
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "HTML"}
+    try:
+        requests.post(url, data=payload, timeout=10)
+    except Exception as e:
+        print("Telegram mesaj hatası:", e)
+
+def get_top_symbols(exchange, limit=30):
+    tickers = exchange.fetch_tickers()
+    candidates = []
+    for symbol, data in tickers.items():
+        if "/USDT" not in symbol or ":USDT" not in symbol or symbol in BLACKLIST_COINS:
+            continue
+        volume = data.get("quoteVolume") or 0
+        change_pct = abs(data.get("percentage") or 0)
+        
+        if volume < 50_000_000 or change_pct < 3 or change_pct > 25:
+            continue
+        candidates.append((symbol, volume))
+        
+    candidates = sorted(candidates, key=lambda x: x[1], reverse=True)
+    return [s for s, _ in candidates[:limit]]
+
+def fetch_data(exchange, symbol, timeframe):
+    try:
+        rows = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=LIMIT)
+        df = pd.DataFrame(rows, columns=["timestamp", "open", "high", "low", "close", "volume"])
+        df["datetime"] = pd.to_datetime(df["timestamp"], unit="ms")
+        return df
+    except Exception:
+        return None
+
+def check_btc_trend(exchange):
+    df = fetch_data(exchange, "BTC/USDT:USDT", "15m")
+    if df is None or len(df) < 60: return False
+    
+    # YENİ ZIRH: BTC 15m'de EMA20 ve EMA50 Kesişimi Doğrulaması
+    df["ema_20"] = df["close"].ewm(span=20, adjust=False).mean()
+    df["ema_50"] = df["close"].ewm(span=50, adjust=False).mean()
+    last = df.iloc[-2]
+    
+    return (last["ema_20"] > last["ema_50"]) and (last["close"] > last["ema_20"])
+
+def check_1h_macro_trend(exchange, symbol):
+    df = fetch_data(exchange, symbol, TF_MACRO)
+    if df is None or len(df) < 100: return False
+    
+    # YENİ ZIRH: 1 Saatlik grafikte Oturmuş Boğa Trendi Doğrulaması
+    df["ema_25"] = df["close"].ewm(span=25, adjust=False).mean()
+    df["ema_99"] = df["close"].ewm(span=99, adjust=False).mean()
+    last_1h = df.iloc[-2]
+    
+    return (last_1h["ema_25"] > last_1h["ema_99"]) and (last_1h["close"] > last_1h["ema_99"])
+
+def check_macro_news():
+    url = "https://www.coindesk.com/arc/outboundfeeder/rss/"
+    keywords = ["fed", "fomc", "cpi", "faiz", "inflation", "enflasyon", "powell", "interest rate"]
+    found_warnings = []
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        response = requests.get(url, headers=headers, timeout=15)
+        if response.status_code == 200:
+            root = ET.fromstring(response.content)
+            for item in root.findall('.//item'):
+                title = item.find('title').text or ""
+                desc = item.find('description').text or ""
+                combined_text = (title + " " + desc).lower()
+                for kw in keywords:
+                    if kw in combined_text:
+                        found_warnings.append(title)
+                        break
+        return list(set(found_warnings))[:3]
+    except Exception:
+        return []
+
+def add_indicators(df):
+    df = df.copy()
+    df["ema_7"] = df["close"].ewm(span=7, adjust=False).mean()
+    df["ema_25"] = df["close"].ewm(span=25, adjust=False).mean()
+    df["ema_99"] = df["close"].ewm(span=99, adjust=False).mean()
+    
+    delta = df["close"].diff()
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
+    df["rsi_14"] = 100 - (100 / (1 + (gain.rolling(14).mean() / loss.rolling(14).mean())))
+
+    df["bb_mid"] = df["close"].rolling(20).mean()
+    df["bb_std"] = df["close"].rolling(20).std()
+    df["bb_upper"] = df["bb_mid"] + 2 * df["bb_std"]
+    df["bb_lower"] = df["bb_mid"] - 2 * df["bb_std"]
+    df["bb_range"] = df["bb_upper"] - df["bb_lower"]
+    df["bb_position"] = (df["close"] - df["bb_lower"]) / df["bb_range"]
+    df.loc[df["bb_range"] == 0, "bb_position"] = 0
+
+    df["volume_ma_20"] = df["volume"].rolling(20).mean()
+    df["volume_ratio_20"] = df["volume"] / df["volume_ma_20"]
+    df.loc[df["volume_ma_20"] == 0, "volume_ratio_20"] = 0
+
+    df["h-l"] = df["high"] - df["low"]
+    df["h-pc"] = abs(df["high"] - df["close"].shift(1))
+    df["l-pc"] = abs(df["low"] - df["close"].shift(1))
+    df["tr"] = df[["h-l", "h-pc", "l-pc"]].max(axis=1)
+    df["atr_14"] = df["tr"].rolling(14).mean()
+    return df
+
+def get_5m_features(df):
+    df = add_indicators(df).dropna().reset_index(drop=True)
+    current = df.iloc[-2]
+    candle_range = current["high"] - current["low"]
+    # LONG İÇİN: Aşağı İğne (Lower Wick) hesaplanır
+    lower_wick = min(current["open"], current["close"]) - current["low"]
+    lower_wick_ratio = lower_wick / candle_range if candle_range > 0 else 0
+    # LONG İÇİN: Fiyatın EMA25'in ne kadar altına indiği (Panik Düşüşü) hesaplanır
+    ema_25_dist_pct = ((current["ema_25"] - current["low"]) / current["ema_25"]) * 100
+    # LONG İÇİN: Genel anlık trendin düşüş olması lazım ki dipten alabilelim
+    is_perfect_downtrend = (current["ema_7"] < current["ema_25"]) and (current["ema_25"] < current["ema_99"])
+
+    return {
+        "close": current["close"], "low": current["low"],
+        "volume_ratio_20": current["volume_ratio_20"], "lower_wick_ratio": lower_wick_ratio,
+        "bb_position": current["bb_position"], "rsi_14": current["rsi_14"],
+        "ema_25_dist_pct": ema_25_dist_pct, "atr_5m": current["atr_14"],
+        "is_perfect_downtrend": is_perfect_downtrend
+    }
+
+def is_long_exhaustion_5m(f):
+    # LONG İÇİN TERSİNE ŞARTLAR (Aşırı Satım Panik Bölgesi)
+    return (
+        f["is_perfect_downtrend"] == True and  
+        f["volume_ratio_20"] > 2.0 and       
+        f["lower_wick_ratio"] > 0.40 and     
+        f["bb_position"] < 0.05 and          # Bollinger'in en altına yapışmış
+        f["rsi_14"] < 30 and                 # RSI diplerde
+        f["ema_25_dist_pct"] > 1.2           # Ortalamadan sert kopmuş
+    )
+
+def save_open_positions_to_csv():
+    if not open_positions:
+        if os.path.exists(FILE_OPEN_POSITIONS):
+            try: os.remove(FILE_OPEN_POSITIONS)
+            except: pass
+        return
+
+    data = []
+    for symbol, pos in open_positions.items():
+        data.append({
+            "Sembol": symbol.replace("/USDT:USDT", "USDT"),
+            "Giriş Zamanı": pos["entry_time"],
+            "Giriş Fiyatı": pos["entry_price"],
+            "Dinamik SL": pos["sl_price"],
+            "Dinamik TP1": pos["tp1_price"],
+            "Dinamik TP2": pos["tp2_price"],
+            "TP1 Alındı Mı": "EVET" if pos["tp1_hit"] else "HAYIR",
+            "Anlık Fiyat": pos["current_price"],
+            "Anlık PnL ($)": round(pos["current_pnl"], 2),
+            "Anlık ROE (%)": round(pos["current_roe"], 2)
+        })
+    df = pd.DataFrame(data)
+    df.to_csv(FILE_OPEN_POSITIONS, index=False, encoding="utf-8")
+
+def log_closed_trade(symbol, entry_p, exit_p, exit_reason, raw_pnl, raw_roe, entry_t, size_multiplier, forensics_data=""):
+    fee_rate = 0.001 
+    total_fee_usd = (POSITION_SIZE_USD * size_multiplier) * fee_rate
+    net_pnl = raw_pnl - total_fee_usd
+    
+    exit_t = get_tsi_time().strftime("%Y-%m-%d %H:%M:%S")
+    
+    new_trade = {
+        "Sembol": symbol.replace("/USDT:USDT", "USDT"),
+        "Yön": "LONG",
+        "Giriş Zamanı": entry_t,
+        "Çıkış Zamanı": exit_t,
+        "Giriş Fiyatı": entry_p,
+        "Çıkış Fiyatı": exit_p,
+        "Kapanış Nedeni": exit_reason,
+        "Kapanan Pay": f"%{int(size_multiplier * 100)}",
+        "Brüt PnL ($)": round(raw_pnl, 2),
+        "Komisyon ($)": round(total_fee_usd, 2),
+        "Net Kâr/Zarar ($)": round(net_pnl, 2),
+        "ROE (%)": round(raw_roe, 2),
+        "Strateji Detayı": forensics_data 
+    }
+    df = pd.DataFrame([new_trade])
+    header_needed = not os.path.exists(FILE_TRADE_HISTORY)
+    df.to_csv(FILE_TRADE_HISTORY, mode="a", index=False, header=header_needed, encoding="utf-8")
+
+def main():
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        print("\n⚠️ DİKKAT: Telegram Token veya Chat ID boş! Bildirimler KAPALI.\n")
+
+    global last_btc_check, btc_is_bullish, last_macro_check
+    exchange = create_exchange()
+    
+    start_msg = "🟢 <b>V5.0 LONG Kurumsal Sürüm Başlatıldı!</b>\n🎯 Dip Avcısı (Long Sniper) Modu, Güçlendirilmiş Boğa Filtresi ve Kademeli Trailing Stop aktif."
+    send_telegram_message(start_msg)
+    print("V5.0 LONG Modu (Güçlendirilmiş Zırhlarla) çalışıyor...")
+    
+    symbols = []
+    last_symbol_update = 0
+
+    while True:
+        now = time.time()
+
+        if now - last_symbol_update > SYMBOL_UPDATE_INTERVAL or not symbols:
+            symbols = get_top_symbols(exchange, TOP_SYMBOL_LIMIT)
+            last_symbol_update = now
+
+        if now - last_btc_check > 5 * 60:
+            btc_is_bullish = check_btc_trend(exchange)
+            last_btc_check = now
+
+        if now - last_macro_check > 12 * 60 * 60 or last_macro_check == 0:
+            macro_warnings = check_macro_news()
+            if macro_warnings:
+                warn_msg = "⚠️ <b>KRİTİK MAKRO GELİŞME UYARISI!</b>\n"
+                for title in macro_warnings: warn_msg += f"• {title}\n"
+                send_telegram_message(warn_msg)
+            last_macro_check = now
+
+        # ========================================================
+        # AŞAMA 1: AÇIK POZİSYONLARI YÖNET (LONG SNIPER)
+        # ========================================================
+        if len(open_positions) > 0:
+            for symbol in list(open_positions.keys()):
+                try:
+                    ticker = exchange.fetch_ticker(symbol)
+                    current_price = round(ticker['last'], 6)
+                    
+                    pos = open_positions[symbol]
+                    pos["current_price"] = current_price
+                    
+                    size_multiplier = 0.5 if pos["tp1_hit"] else 1.0
+                    # LONG İÇİN PNL HESABI
+                    price_diff_pct = (current_price - pos["entry_price"]) / pos["entry_price"]
+                    pos["current_pnl"] = price_diff_pct * (POSITION_SIZE_USD * size_multiplier)
+                    pos["current_roe"] = price_diff_pct * 100 * LEVERAGE
+
+                    # A) DİNAMİK STOP LOSS KONTROLÜ (LONG İÇİN FİYAT AŞAĞI DÜŞERSE STOP OLUR)
+                    if current_price <= pos["sl_price"]:
+                        exit_price = pos["sl_price"]
+                        pnl = ((exit_price - pos["entry_price"]) / pos["entry_price"]) * (POSITION_SIZE_USD * size_multiplier)
+                        roe = ((exit_price - pos["entry_price"]) / pos["entry_price"]) * 100 * LEVERAGE
+                        
+                        if pos.get("step_hit", False):
+                            reason = "TAKE PROFIT 1 (TRAILING STOP)" 
+                        elif pos["tp1_hit"]:
+                            reason = "BREAKEVEN (GİRİŞTE STOP)"
+                        else:
+                            reason = "STOP LOSS"
+                            
+                        log_closed_trade(symbol, pos["entry_price"], exit_price, reason, pnl, roe, pos["entry_time"], size_multiplier, pos.get("forensics", ""))
+                        
+                        net_pnl = pnl - (POSITION_SIZE_USD * size_multiplier * 0.001)
+                        mesaj_baslik = "🎯 <b>KADEMELİ KÂR (STEP STOP)</b>" if pos.get("step_hit", False) else f"🛑 <b>{reason}</b>"
+                        send_telegram_message(f"{mesaj_baslik}: {symbol.replace('/USDT:USDT','USDT')}\nPnL (Net): ${round(net_pnl, 2)}")
+                        del open_positions[symbol]
+                        continue
+
+                    # B) TAKE PROFIT 1 KONTROLÜ (LONG İÇİN FİYAT YUKARI ÇIKARSA KÂR ALIR)
+                    elif not pos["tp1_hit"] and current_price >= pos["tp1_price"]:
+                        exit_price = pos["tp1_price"]
+                        pnl = ((exit_price - pos["entry_price"]) / pos["entry_price"]) * (POSITION_SIZE_USD * 0.5)
+                        roe = ((exit_price - pos["entry_price"]) / pos["entry_price"]) * 100 * LEVERAGE
+                        
+                        log_closed_trade(symbol, pos["entry_price"], exit_price, "TAKE PROFIT 1 (%50)", pnl, roe, pos["entry_time"], 0.5, pos.get("forensics", ""))
+                        
+                        net_pnl = pnl - (POSITION_SIZE_USD * 0.5 * 0.001)
+                        send_telegram_message(f"🎯 <b>TP1 ALINDI (%50): {symbol.replace('/USDT:USDT','USDT')}</b>\nKâr (Net): ${round(net_pnl, 2)}\n👉 Stop Loss Giriş Fiyatına (Breakeven) Çekildi.")
+                        
+                        pos["tp1_hit"] = True
+                        pos["sl_price"] = pos["entry_price"] 
+                        continue
+
+                    # C) NİHAİ TP2 KONTROLÜ
+                    elif pos["tp1_hit"] and current_price >= pos["tp2_price"]:
+                        exit_price = pos["tp2_price"]
+                        pnl = ((exit_price - pos["entry_price"]) / pos["entry_price"]) * (POSITION_SIZE_USD * 0.5)
+                        roe = ((exit_price - pos["entry_price"]) / pos["entry_price"]) * 100 * LEVERAGE
+                        
+                        log_closed_trade(symbol, pos["entry_price"], exit_price, "TAKE PROFIT 2 (NİHAİ %50)", pnl, roe, pos["entry_time"], 0.5, pos.get("forensics", ""))
+                        
+                        net_pnl = pnl - (POSITION_SIZE_USD * 0.5 * 0.001)
+                        send_telegram_message(f"💰 <b>TP2 NİHAİ HEDEF ALINDI: {symbol.replace('/USDT:USDT','USDT')}</b>\nKâr (Net): ${round(net_pnl, 2)}\n💼 Pozisyon başarıyla kapandı!")
+                        del open_positions[symbol]
+                        continue
+
+                    # D) KADEMELİ STEP STOP TETİKLEME KONTROLÜ (Fiyat Yukarı Çıkınca Stopu Yukarı Çeker)
+                    elif pos["tp1_hit"] and not pos.get("step_hit", False) and current_price >= pos["step_price"]:
+                        pos["step_hit"] = True
+                        pos["sl_price"] = pos["tp1_price"] 
+                        send_telegram_message(f"🛡️ <b>KADEMELİ STOP AKTİF: {symbol.replace('/USDT:USDT','USDT')}</b>\nFiyat hedefin yarısını geçti! Stop Loss noktası garantilenmiş kâr için TP1 ({pos['tp1_price']}) seviyesine yükseltildi.")
+                        continue
+                        
+                except Exception as e:
+                    print(f"⚠️ Pozisyon Yönetim Hatası ({symbol}): {e}")
+
+            save_open_positions_to_csv()
+            time.sleep(1)
+            continue 
+
+        # ========================================================
+        # AŞAMA 2: SİNYAL VE TETİKLEYİCİ TARAMASI (LONG İÇİN)
+        # ========================================================
+        for symbol in symbols:
+            if symbol in last_signal_time and now - last_signal_time[symbol] < COOLDOWN_SECONDS: continue
+
+            try:
+                if symbol in active_setups:
+                    setup = active_setups[symbol]
+                    
+                    if now - setup["created_at"] > (WATCH_MINUTES * 60):
+                        del active_setups[symbol]
+                        continue
+                    
+                    df_1m = fetch_data(exchange, symbol, TF_TRIGGER)
+                    if df_1m is None or len(df_1m) < 25: continue
+                    
+                    df_1m = add_indicators(df_1m).dropna().reset_index(drop=True)
+                    live_1m = df_1m.iloc[-1]
+                    last_1m = df_1m.iloc[-2]
+                    
+                    # LONG İÇİN İPTAL ŞARTI: Fiyat 5 dakikalık en düşük seviyenin altına inerse yapı bozulur
+                    if live_1m["low"] < setup["low_5m"] or last_1m["low"] < setup["low_5m"]:
+                        print(f"🚫 {symbol} Invalidation tetiklendi (Dip Kırıldı). Kurulum iptal.")
+                        del active_setups[symbol]
+                        continue
+                    
+                    volume_ok = last_1m["volume"] > (last_1m["volume_ma_20"] * 1.5)
+                    
+                    # LONG TETİKLEYİCİSİ: 1 Dakikalık grafikte Hacimli YEŞİL mum ve EMA7'nin ÜSTÜNDE kapanış
+                    if (last_1m["close"] > last_1m["open"]) and (last_1m["close"] > last_1m["ema_7"]) and volume_ok:
+                        entry_price = round(last_1m["close"], 6)
+                        
+                        # 🛡️ LONG İÇİN PULLBACK (NEFES ALMA) BEKLEME FİLTRESİ
+                        rise_from_dip_pct = ((entry_price - setup["low_5m"]) / setup["low_5m"]) * 100
+                        if rise_from_dip_pct > 1.5:
+                            print(f"⏳ {symbol} Geç kalındı (%{rise_from_dip_pct:.2f} yükseliş). Setup silinmedi, fiyatın aşağı doğru nefes alması (Pullback) bekleniyor...")
+                            continue
+
+                        atr = setup["atr_5m"]
+                        
+                        # LONG İÇİN HEDEFLER
+                        sl_price = round(entry_price - (atr * ATR_SL_MULTIPLIER), 6)
+                        tp1_price = round(entry_price + (atr * ATR_TP1_MULTIPLIER), 6)
+                        step_price = round(entry_price + (atr * ATR_STEP_MULTIPLIER), 6) 
+                        tp2_price = round(entry_price + (atr * ATR_TP2_MULTIPLIER), 6)
+                        
+                        if (entry_price - sl_price) / entry_price > 0.025:
+                            del active_setups[symbol]
+                            continue
+
+                        hacim_carpani = last_1m["volume_ratio_20"]
+                        forensics_metni = f"RSI: {setup['rsi_5m']:.1f} | BB Pzt: {setup['bb_5m']:.2f} | EMA25'ten Kopuş: %{setup['ema_dist_5m']:.2f} | 1m Hacim Gücü: {hacim_carpani:.1f}x"
+
+                        entry_time_str = get_tsi_time().strftime("%Y-%m-%d %H:%M:%S")
+
+                        open_positions[symbol] = {
+                            "entry_time": entry_time_str,
+                            "entry_price": entry_price,
+                            "sl_price": sl_price,
+                            "tp1_price": tp1_price,
+                            "step_price": step_price, 
+                            "tp2_price": tp2_price,
+                            "tp1_hit": False,
+                            "step_hit": False, 
+                            "current_price": entry_price,
+                            "current_pnl": 0.0,
+                            "current_roe": 0.0,
+                            "low_5m": setup["low_5m"],
+                            "forensics": forensics_metni
+                        }
+
+                        clean_s = symbol.replace("/USDT:USDT", "USDT")
+                        sl_pct = ((entry_price - sl_price) / entry_price) * 100
+                        tp1_pct = ((tp1_price - entry_price) / entry_price) * 100
+                        step_pct = ((step_price - entry_price) / entry_price) * 100
+                        tp2_pct = ((tp2_price - entry_price) / entry_price) * 100
+                        
+                        msg = (f"🟢 <b>Kurumsal V5.0 LONG İşlem Açıldı: {clean_s}</b>\n\n"
+                               f"📍 Giriş: {entry_price:.5f}\n"
+                               f"🛑 İlk SL (%{sl_pct:.2f}): {sl_price:.5f}\n"
+                               f"🎯 Kısmi TP1 (%{tp1_pct:.2f}): {tp1_price:.5f}\n"
+                               f"🛡️ Step Noktası (%{step_pct:.2f}): {step_price:.5f}\n"
+                               f"💰 Nihai TP2 (%{tp2_pct:.2f}): {tp2_price:.5f}\n\n"
+                               f"💼 Toplam Büyüklük: {MARGIN_USD}$ x {LEVERAGE}x")
+                        send_telegram_message(msg)
+                        
+                        last_signal_time[symbol] = now
+                        del active_setups[symbol]
+                    continue
+                
+                # LONG Botu için: BTC Düşüş Trendindeyse (Ayı) genel risk alımından kaçın
+                if not btc_is_bullish: continue
+
+                if not check_1h_macro_trend(exchange, symbol):
+                    continue
+
+                df_5m = fetch_data(exchange, symbol, TF_SETUP)
+                if df_5m is None or len(df_5m) < 20: continue
+                features_5m = get_5m_features(df_5m)
+                
+                if is_long_exhaustion_5m(features_5m):
+                    active_setups[symbol] = {
+                        "created_at": now,
+                        "low_5m": features_5m["low"],
+                        "atr_5m": features_5m["atr_5m"],
+                        "rsi_5m": features_5m["rsi_14"],
+                        "bb_5m": features_5m["bb_position"],
+                        "ema_dist_5m": features_5m["ema_25_dist_pct"]
+                    }
+                    print(f"🎯 5m LONG Kurulum Yakalandı: {symbol}")
+                    
+            except Exception as e:
+                print(f"⚠️ Tarama Hatası ({symbol}): {e}")
+            
+            time.sleep(0.2)
+
+        time.sleep(2)
+
+if __name__ == "__main__":
+    main()
