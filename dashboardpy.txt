@@ -8,8 +8,8 @@ from datetime import datetime
 # 🎨 SAYFA VE TEMA AYARLARI
 # ==========================================
 st.set_page_config(
-    page_title="Project Apex V5.0 | Kurumsal Panel",
-    page_icon="🤖",
+    page_title="Project Apex | Ana Komuta Merkezi",
+    page_icon="💠",
     layout="wide"
 )
 
@@ -39,20 +39,38 @@ st.markdown("""
         margin-bottom: 10px;
     }
     </style>
-    """, unsafe_allow_stdio=True)
-
-# YENİ VE TEMİZ VERİ DOSYALARI (V5 FORMATI)
-FILE_OPEN = "acik_islemler_v5.csv"
-FILE_HISTORY = "islem_gecmisi_v5.csv"
+    """, unsafe_allow_html=True)
 
 # ==========================================
-# 📊 VERİ YÜKLEME VE HESAPLAMA MOTORU
+# 📊 VERİ YÜKLEME VE BİRLEŞTİRME MOTORU
 # ==========================================
 
-def load_data(file):
+def load_data(file, direction_tag=None):
     if os.path.exists(file) and os.path.getsize(file) > 0:
-        return pd.read_csv(file)
+        df = pd.read_csv(file)
+        if direction_tag and 'Yön' not in df.columns:
+            df.insert(1, 'Yön', direction_tag)
+        return df
     return pd.DataFrame()
+
+# Açık İşlemleri Yükle ve Birleştir
+df_open_short = load_data("acik_islemler_v5.csv", "🔴 SHORT")
+df_open_long = load_data("acik_islemler_long_v5.csv", "🟢 LONG")
+open_list = [df for df in [df_open_short, df_open_long] if not df.empty]
+df_open = pd.concat(open_list, ignore_index=True) if open_list else pd.DataFrame()
+
+# Geçmiş İşlemleri Yükle ve Birleştir
+df_hist_short = load_data("islem_gecmisi_v5.csv")
+df_hist_long = load_data("islem_gecmisi_long_v5.csv")
+hist_list = [df for df in [df_hist_short, df_hist_long] if not df.empty]
+
+if hist_list:
+    df_history = pd.concat(hist_list, ignore_index=True)
+    # Grafikte doğru çizilmesi için kapanış zamanına göre eskiyden yeniye sıralıyoruz
+    df_history['Çıkış Zamanı'] = pd.to_datetime(df_history['Çıkış Zamanı'])
+    df_history = df_history.sort_values(by='Çıkış Zamanı').reset_index(drop=True)
+else:
+    df_history = pd.DataFrame()
 
 def calculate_max_loss_streak(df):
     if df.empty: return 0
@@ -61,15 +79,12 @@ def calculate_max_loss_streak(df):
     streaks = df['is_loss'] * (df['is_loss'].groupby((df['is_loss'] != df['is_loss'].shift()).cumsum()).cumcount() + 1)
     return streaks.max()
 
-df_open = load_data(FILE_OPEN)
-df_history = load_data(FILE_HISTORY)
-
 # ==========================================
 # 🏗️ PANEL BAŞLIĞI VE ÜST METRİKLER
 # ==========================================
 
-st.title("🚀 Project Apex V5.0 - Corporate Command Center")
-st.caption("Ema99 Macro Trend Filter + Kademeli TP1/Breakeven Motoru Canlı Veri Akışı")
+st.title("💠 Project Apex V5.0 - Ana Komuta Merkezi")
+st.caption("LONG ve SHORT Operasyonlarının Birleşik Canlı Veri Akışı")
 
 if not df_history.empty:
     total_net_pnl = df_history["Net Kâr/Zarar ($)"].sum()
@@ -85,13 +100,13 @@ if not df_history.empty:
     loss_streak = calculate_max_loss_streak(df_history)
 
     m1, m2, m3, m4, m5 = st.columns(5)
-    m1.metric("Toplam Net PnL", f"${round(total_net_pnl, 2)}")
+    m1.metric("Genel Toplam PnL", f"${round(total_net_pnl, 2)}")
     m2.metric("Profit Factor", profit_factor)
-    m3.metric("Win Rate", f"%{win_rate}")
+    m3.metric("Genel Win Rate", f"%{win_rate}")
     m4.metric("Max Loss Streak", f"{loss_streak} İşlem")
     m5.metric("Toplam İşlem", total_trades)
 else:
-    st.info("Henüz veri birikmedi. Botun işlem açması bekleniyor...")
+    st.info("Henüz veri birikmedi. Botların işlem açması bekleniyor...")
 
 st.divider()
 
@@ -99,10 +114,10 @@ st.divider()
 # 📈 GRAFİK VE ANALİZ BÖLÜMÜ
 # ==========================================
 
-col_left, col_right = st.columns([2, 1])
+col_left, col_mid, col_right = st.columns([2, 1, 1])
 
 with col_left:
-    st.subheader("📈 Kümülatif Kâr Gelişimi (Net)")
+    st.subheader("📈 Birleşik Kümülatif Kâr Gelişimi")
     if not df_history.empty:
         df_history["Cumulative_PnL"] = df_history["Net Kâr/Zarar ($)"].cumsum()
         fig_line = px.line(
@@ -110,24 +125,39 @@ with col_left:
             x="Çıkış Zamanı", 
             y="Cumulative_PnL",
             template="plotly_dark",
-            color_discrete_sequence=['#deff9a']
+            color_discrete_sequence=['#4da6ff']
         )
         fig_line.update_layout(hovermode="x unified", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
         st.plotly_chart(fig_line, use_container_width=True)
 
+with col_mid:
+    st.subheader("⚖️ Yön Dağılımı")
+    if not df_history.empty and "Yön" in df_history.columns:
+        dist_yon = df_history["Yön"].value_counts()
+        fig_pie_yon = px.pie(
+            names=dist_yon.index, 
+            values=dist_yon.values, 
+            hole=0.5,
+            template="plotly_dark",
+            color=dist_yon.index,
+            color_discrete_map={"LONG": "#deff9a", "SHORT": "#ff4d4d"}
+        )
+        fig_pie_yon.update_layout(showlegend=True, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+        st.plotly_chart(fig_pie_yon, use_container_width=True)
+
 with col_right:
-    st.subheader("🎯 Sonuç Dağılımı")
+    st.subheader("🎯 Kapanış Nedenleri")
     if not df_history.empty:
-        dist = df_history["Kapanış Nedeni"].value_counts()
-        fig_pie = px.pie(
-            names=dist.index, 
-            values=dist.values, 
-            hole=0.4,
+        dist_neden = df_history["Kapanış Nedeni"].value_counts()
+        fig_pie_neden = px.pie(
+            names=dist_neden.index, 
+            values=dist_neden.values, 
+            hole=0.5,
             template="plotly_dark",
             color_discrete_sequence=px.colors.qualitative.Pastel
         )
-        fig_pie.update_layout(showlegend=False, paper_bgcolor="rgba(0,0,0,0)")
-        st.plotly_chart(fig_pie, use_container_width=True)
+        fig_pie_neden.update_layout(showlegend=False, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+        st.plotly_chart(fig_pie_neden, use_container_width=True)
 
 st.divider()
 
@@ -135,15 +165,16 @@ st.divider()
 # 📑 TAB PANELİ (AÇIK, KAPALI, LİDERLİK)
 # ==========================================
 
-tab1, tab2, tab3 = st.tabs(["🟢 Açık Pozisyonlar", "📚 İşlem Geçmişi & Forensics", "🏆 Coin Liderlik Tablosu"])
+tab1, tab2, tab3 = st.tabs(["⚡ Aktif Operasyonlar", "📚 Tüm İşlem Geçmişi", "🏆 Coin Liderlik Tablosu"])
 
 with tab1:
-    st.subheader("Anlık Takip Edilen İşlemler")
+    st.subheader("Anlık Takip Edilen LONG ve SHORT İşlemler")
     if not df_open.empty:
         def style_pnl(val):
             color = '#deff9a' if val > 0 else '#ff4d4d'
             return f'color: {color}; font-weight: bold;'
 
+        # Görüntülemeyi şıklaştırmak için st.dataframe kullanıyoruz
         st.dataframe(
             df_open.style.map(style_pnl, subset=['Anlık PnL ($)', 'Anlık ROE (%)']),
             use_container_width=True
@@ -154,10 +185,12 @@ with tab1:
 with tab2:
     st.subheader("İşlem Geçmişi ve Strateji Detayı")
     if not df_history.empty:
-        df_sorted = df_history.iloc[::-1]
+        # En yeni işlemler en üstte görünsün diye ters çeviriyoruz
+        df_sorted = df_history.sort_values(by='Çıkış Zamanı', ascending=False)
         
         for index, row in df_sorted.iterrows():
-            baslik = f"{row['Sembol']} | Giriş: {row['Giriş Zamanı']} ➔ Çıkış: {row['Çıkış Zamanı']} | Net PnL: ${row['Net Kâr/Zarar ($)']} | {row['Kapanış Nedeni']}"
+            yon_icon = "🟢 LONG" if row.get("Yön") == "LONG" else "🔴 SHORT"
+            baslik = f"{yon_icon} | {row['Sembol']} | Giriş: {row['Giriş Zamanı']} ➔ Çıkış: {row['Çıkış Zamanı']} | Net PnL: ${row['Net Kâr/Zarar ($)']} | {row['Kapanış Nedeni']}"
             
             with st.expander(baslik):
                 c1, c2, c3 = st.columns(3)
@@ -195,10 +228,9 @@ with tab3:
             return f'color: {color}; font-weight: bold;'
         
         st.dataframe(leaderboard.style.map(color_lead, subset=['Net Kâr/Zarar ($)']), use_container_width=True)
-        st.info("💡 Not: Sürekli zarar yazan (Kırmızı) coinleri botun içindeki BLACKLIST_COINS listesine ekleyerek performansı artırabilirsiniz.")
 
 st.markdown("---")
-st.markdown(f"<p style='text-align: center; opacity: 0.5;'>Project Apex V5.0 Dashboard | Son Güncelleme: {datetime.now().strftime('%H:%M:%S')}</p>", unsafe_allow_html=True)
+st.markdown(f"<p style='text-align: center; opacity: 0.5;'>Project Apex V5.0 Birleşik Dashboard | Son Güncelleme: {datetime.now().strftime('%H:%M:%S')}</p>", unsafe_allow_html=True)
 
 if st.button("🔄 Verileri Yenile"):
     st.rerun()
