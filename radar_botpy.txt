@@ -1,0 +1,294 @@
+import ccxt
+import pandas as pd
+import requests
+import time
+from datetime import datetime, timedelta, timezone
+
+# ==========================================
+# ⚙️ GENEL AYARLAR VE SİNYAL PARAMETRELERİ
+# ==========================================
+TELEGRAM_BOT_TOKEN = "BURAYA_TOKEN_GİR"
+TELEGRAM_CHAT_ID = "BURAYA_CHAT_ID_GİR"
+
+EXCHANGE_ID = "binance"
+LIMIT = 120
+TOP_SYMBOL_LIMIT = 30
+SYMBOL_UPDATE_INTERVAL = 5 * 60
+
+TF_MACRO = "1h"      
+TF_SETUP = "5m"      
+TF_TRIGGER = "1m"    
+
+WATCH_MINUTES = 25   # Sinyal bekleme süresi
+COOLDOWN_SECONDS = 60 * 60  # Aynı coinden 1 saat boyunca tekrar sinyal atmaz
+
+# HEDEF ÇARPANLARI (Manuel giriş yaparken sana rehber olması için)
+ATR_SL_MULTIPLIER = 1.2   
+ATR_TP1_MULTIPLIER = 1.0  
+ATR_STEP_MULTIPLIER = 1.6 
+ATR_TP2_MULTIPLIER = 2.2  
+
+BLACKLIST_COINS = ["BTC/USDT:USDT", "ETH/USDT:USDT", "USDC/USDT:USDT", "FDUSD/USDT:USDT"]
+
+active_setups = {}
+last_signal_time = {}
+last_btc_check = 0
+
+def get_tsi_time():
+    return datetime.now(timezone.utc) + timedelta(hours=3)
+
+def create_exchange():
+    return getattr(ccxt, EXCHANGE_ID)({
+        "enableRateLimit": True,
+        "options": {"defaultType": "future"}
+    })
+
+def send_telegram_message(message):
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        return 
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "HTML"}
+    try:
+        requests.post(url, data=payload, timeout=10)
+    except Exception as e:
+        pass
+
+def get_top_symbols(exchange, limit=30):
+    try:
+        tickers = exchange.fetch_tickers()
+        candidates = []
+        for symbol, data in tickers.items():
+            if "/USDT" not in symbol or ":USDT" not in symbol or symbol in BLACKLIST_COINS:
+                continue
+            volume = data.get("quoteVolume") or 0
+            change_pct = abs(data.get("percentage") or 0)
+            
+            if volume < 50_000_000 or change_pct < 3 or change_pct > 25:
+                continue
+            candidates.append((symbol, volume))
+            
+        candidates = sorted(candidates, key=lambda x: x[1], reverse=True)
+        return [s for s, _ in candidates[:limit]]
+    except:
+        return []
+
+def fetch_data(exchange, symbol, timeframe):
+    try:
+        rows = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=LIMIT)
+        df = pd.DataFrame(rows, columns=["timestamp", "open", "high", "low", "close", "volume"])
+        return df
+    except:
+        return None
+
+def get_btc_status(exchange):
+    df = fetch_data(exchange, "BTC/USDT:USDT", "15m")
+    if df is None or len(df) < 50: return {"bullish": False, "bearish": False}
+    
+    df["ema_20"] = df["close"].ewm(span=20, adjust=False).mean()
+    df["ema_50"] = df["close"].ewm(span=50, adjust=False).mean()
+    last = df.iloc[-2]
+    
+    bullish = (last["ema_20"] > last["ema_50"]) and (last["close"] > last["ema_20"])
+    bearish = (last["ema_20"] < last["ema_50"]) and (last["close"] < last["ema_20"])
+    return {"bullish": bullish, "bearish": bearish}
+
+def get_macro_trend(exchange, symbol):
+    df = fetch_data(exchange, symbol, TF_MACRO)
+    if df is None or len(df) < 100: return "NONE"
+    
+    df["ema_25"] = df["close"].ewm(span=25, adjust=False).mean()
+    df["ema_99"] = df["close"].ewm(span=99, adjust=False).mean()
+    last = df.iloc[-2]
+    
+    if (last["ema_25"] > last["ema_99"]) and (last["close"] > last["ema_99"]):
+        return "BULL"
+    elif (last["ema_25"] < last["ema_99"]) and (last["close"] < last["ema_99"]):
+        return "BEAR"
+    return "NONE"
+
+def add_indicators(df):
+    df = df.copy()
+    df["ema_7"] = df["close"].ewm(span=7, adjust=False).mean()
+    df["ema_25"] = df["close"].ewm(span=25, adjust=False).mean()
+    df["ema_99"] = df["close"].ewm(span=99, adjust=False).mean()
+    
+    delta = df["close"].diff()
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
+    df["rsi_14"] = 100 - (100 / (1 + (gain.rolling(14).mean() / loss.rolling(14).mean())))
+
+    df["bb_mid"] = df["close"].rolling(20).mean()
+    df["bb_std"] = df["close"].rolling(20).std()
+    df["bb_upper"] = df["bb_mid"] + 2 * df["bb_std"]
+    df["bb_lower"] = df["bb_mid"] - 2 * df["bb_std"]
+    df["bb_range"] = df["bb_upper"] - df["bb_lower"]
+    df["bb_position"] = (df["close"] - df["bb_lower"]) / df["bb_range"]
+    df.loc[df["bb_range"] == 0, "bb_position"] = 0
+
+    df["volume_ma_20"] = df["volume"].rolling(20).mean()
+    df["volume_ratio_20"] = df["volume"] / df["volume_ma_20"]
+    df.loc[df["volume_ma_20"] == 0, "volume_ratio_20"] = 0
+
+    df["h-l"] = df["high"] - df["low"]
+    df["h-pc"] = abs(df["high"] - df["close"].shift(1))
+    df["l-pc"] = abs(df["low"] - df["close"].shift(1))
+    df["tr"] = df[["h-l", "h-pc", "l-pc"]].max(axis=1)
+    df["atr_14"] = df["tr"].rolling(14).mean()
+    return df
+
+def check_5m_setup(df):
+    df = add_indicators(df).dropna().reset_index(drop=True)
+    current = df.iloc[-2]
+    candle_range = current["high"] - current["low"]
+    
+    upper_wick = current["high"] - max(current["open"], current["close"])
+    upper_wick_ratio = upper_wick / candle_range if candle_range > 0 else 0
+    
+    lower_wick = min(current["open"], current["close"]) - current["low"]
+    lower_wick_ratio = lower_wick / candle_range if candle_range > 0 else 0
+    
+    ema_25_dist_up = ((current["high"] - current["ema_25"]) / current["ema_25"]) * 100
+    ema_25_dist_down = ((current["ema_25"] - current["low"]) / current["ema_25"]) * 100
+    
+    is_uptrend = (current["ema_7"] > current["ema_25"]) and (current["ema_25"] > current["ema_99"])
+    is_downtrend = (current["ema_7"] < current["ema_25"]) and (current["ema_25"] < current["ema_99"])
+
+    setup_type = "NONE"
+    
+    # SHORT KURULUMU KONTROLÜ
+    if (is_uptrend and current["volume_ratio_20"] > 2.0 and upper_wick_ratio > 0.40 and 
+        current["bb_position"] > 0.95 and current["rsi_14"] > 70 and ema_25_dist_up > 1.2):
+        setup_type = "SHORT"
+        
+    # LONG KURULUMU KONTROLÜ
+    elif (is_downtrend and current["volume_ratio_20"] > 2.0 and lower_wick_ratio > 0.40 and 
+          current["bb_position"] < 0.05 and current["rsi_14"] < 30 and ema_25_dist_down > 1.2):
+        setup_type = "LONG"
+
+    return {
+        "type": setup_type, "high": current["high"], "low": current["low"], 
+        "atr_5m": current["atr_14"], "rsi": current["rsi_14"]
+    }
+
+def main():
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        print("\n⚠️ DİKKAT: Telegram Token/Chat ID eksik!\n")
+
+    exchange = create_exchange()
+    send_telegram_message("📡 <b>RADAR BOT AKTİF!</b>\nManuel işlemleriniz için hem LONG hem SHORT fırsatları taranıyor...")
+    print("Radar Bot Çalışıyor...")
+    
+    symbols = []
+    last_symbol_update = 0
+    btc_status = {"bullish": False, "bearish": False}
+
+    while True:
+        now = time.time()
+
+        if now - last_symbol_update > SYMBOL_UPDATE_INTERVAL or not symbols:
+            symbols = get_top_symbols(exchange, TOP_SYMBOL_LIMIT)
+            last_symbol_update = now
+
+        if now - last_btc_check > 5 * 60:
+            btc_status = get_btc_status(exchange)
+            last_btc_check = now
+
+        for symbol in symbols:
+            if symbol in last_signal_time and now - last_signal_time[symbol] < COOLDOWN_SECONDS: 
+                continue
+
+            try:
+                # 1. AŞAMA: AKTİF KURULUMLARI TETİKLEME (1m Kontrolü)
+                if symbol in active_setups:
+                    setup = active_setups[symbol]
+                    
+                    if now - setup["created_at"] > (WATCH_MINUTES * 60):
+                        del active_setups[symbol]
+                        continue
+                    
+                    df_1m = fetch_data(exchange, symbol, TF_TRIGGER)
+                    if df_1m is None or len(df_1m) < 25: continue
+                    
+                    df_1m = add_indicators(df_1m).dropna().reset_index(drop=True)
+                    live_1m = df_1m.iloc[-1]
+                    last_1m = df_1m.iloc[-2]
+                    volume_ok = last_1m["volume"] > (last_1m["volume_ma_20"] * 1.5)
+                    
+                    entry_price = round(last_1m["close"], 6)
+                    atr = setup["atr_5m"]
+
+                    # SHORT TETİKLEYİCİ
+                    if setup["type"] == "SHORT":
+                        if live_1m["high"] > setup["high"] or last_1m["high"] > setup["high"]:
+                            del active_setups[symbol]
+                            continue
+                            
+                        if (last_1m["close"] < last_1m["open"]) and (last_1m["close"] < last_1m["ema_7"]) and volume_ok:
+                            drop_pct = ((setup["high"] - entry_price) / setup["high"]) * 100
+                            if drop_pct > 1.5: continue # Pullback bekle
+
+                            sl_price = round(entry_price + (atr * ATR_SL_MULTIPLIER), 6)
+                            tp1_price = round(entry_price - (atr * ATR_TP1_MULTIPLIER), 6)
+                            tp2_price = round(entry_price - (atr * ATR_TP2_MULTIPLIER), 6)
+                            
+                            clean_s = symbol.replace("/USDT:USDT", "USDT")
+                            msg = (f"🔴 <b>SHORT FIRSATI YAKALANDI: {clean_s}</b>\n\n"
+                                   f"📉 Grafiği aç ve düşüşü onayla! Eğer uygunsa değerler:\n\n"
+                                   f"📍 Giriş (Öneri): {entry_price:.5f}\n"
+                                   f"🛑 Stop Loss: {sl_price:.5f}\n"
+                                   f"🎯 Kısmi TP1: {tp1_price:.5f}\n"
+                                   f"💰 Nihai TP2: {tp2_price:.5f}\n\n"
+                                   f"<i>(Not: RSI {setup['rsi']:.1f} seviyesinden dönüyor)</i>")
+                            send_telegram_message(msg)
+                            print(f"🚨 SİNYAL GÖNDERİLDİ: {symbol} (SHORT)")
+                            last_signal_time[symbol] = now
+                            del active_setups[symbol]
+
+                    # LONG TETİKLEYİCİ
+                    elif setup["type"] == "LONG":
+                        if live_1m["low"] < setup["low"] or last_1m["low"] < setup["low"]:
+                            del active_setups[symbol]
+                            continue
+                            
+                        if (last_1m["close"] > last_1m["open"]) and (last_1m["close"] > last_1m["ema_7"]) and volume_ok:
+                            rise_pct = ((entry_price - setup["low"]) / setup["low"]) * 100
+                            if rise_pct > 1.5: continue # Pullback bekle
+
+                            sl_price = round(entry_price - (atr * ATR_SL_MULTIPLIER), 6)
+                            tp1_price = round(entry_price + (atr * ATR_TP1_MULTIPLIER), 6)
+                            tp2_price = round(entry_price + (atr * ATR_TP2_MULTIPLIER), 6)
+                            
+                            clean_s = symbol.replace("/USDT:USDT", "USDT")
+                            msg = (f"🟢 <b>LONG FIRSATI YAKALANDI: {clean_s}</b>\n\n"
+                                   f"📈 Grafiği aç ve dönüşü onayla! Eğer uygunsa değerler:\n\n"
+                                   f"📍 Giriş (Öneri): {entry_price:.5f}\n"
+                                   f"🛑 Stop Loss: {sl_price:.5f}\n"
+                                   f"🎯 Kısmi TP1: {tp1_price:.5f}\n"
+                                   f"💰 Nihai TP2: {tp2_price:.5f}\n\n"
+                                   f"<i>(Not: RSI {setup['rsi']:.1f} seviyesinden sekiyor)</i>")
+                            send_telegram_message(msg)
+                            print(f"🚨 SİNYAL GÖNDERİLDİ: {symbol} (LONG)")
+                            last_signal_time[symbol] = now
+                            del active_setups[symbol]
+                    continue
+
+                # 2. AŞAMA: YENİ KURULUM TARAMASI (5m Kontrolü)
+                macro_trend = get_macro_trend(exchange, symbol)
+                
+                df_5m = fetch_data(exchange, symbol, TF_SETUP)
+                if df_5m is None or len(df_5m) < 20: continue
+                features = check_5m_setup(df_5m)
+                
+                if features["type"] == "SHORT" and macro_trend == "BEAR" and not btc_status["bullish"]:
+                    active_setups[symbol] = {"created_at": now, "type": "SHORT", "high": features["high"], "atr_5m": features["atr_5m"], "rsi": features["rsi"]}
+                
+                elif features["type"] == "LONG" and macro_trend == "BULL" and btc_status["bullish"]:
+                    active_setups[symbol] = {"created_at": now, "type": "LONG", "low": features["low"], "atr_5m": features["atr_5m"], "rsi": features["rsi"]}
+
+            except Exception as e:
+                pass
+            time.sleep(0.2)
+        time.sleep(2)
+
+if __name__ == "__main__":
+    main()
